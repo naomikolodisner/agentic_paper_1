@@ -178,22 +178,22 @@ async def run_subprocess(cmd, **kwargs):
 # === Viral Detection Agent ===
 
 @python_app
-def virsorter_app(unzipped_spades, virsorter_output_dir):
+def virsorter2_app(unzipped_spades, virsorter2_output_dir):
     import subprocess
     import os
     import socket
     import shutil
-    print("VirSorter Running on node:", socket.gethostname(), flush=True)
-    if os.path.exists(virsorter_output_dir):
-        shutil.rmtree(virsorter_output_dir)
-    os.makedirs(virsorter_output_dir)   
+    print("VirSorter2 Running on node:", socket.gethostname(), flush=True)
+    if os.path.exists(virsorter2_output_dir):
+        shutil.rmtree(virsorter2_output_dir)
+    os.makedirs(virsorter2_output_dir)   
     cmd = [
         "conda", "run", "-n", "virsorter2_env",
-        "virsorter", "run", "-w", virsorter_output_dir,
+        "virsorter", "run", "-w", virsorter2_output_dir,
         "-i", unzipped_spades, "--min-length", "1500", "-j", "4", "all"
     ]
     subprocess.run(cmd, check=True)
-    return os.path.join(virsorter_output_dir, "final-viral-combined.fa")
+    return os.path.join(virsorter2_output_dir, "final-viral-combined.fa")
 
 @python_app
 def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir):
@@ -243,6 +243,95 @@ def genomad_app(unzipped_spades, genomad_output_dir, db):
     ]
     subprocess.run(cmd, check=True)
     return os.path.join(genomad_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def marvel_app(unzipped_spades, marvel_output_dir, db):
+    import subprocess
+    import os
+    import socket
+    print("MARVEL Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "marvel_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(marvel_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def virfinder_app(input1, input2, input3):
+    import subprocess
+    import os
+    import socket
+    print("VirFinder Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "virfinder_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(virfinder_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def vibrant_app(input1, input2, input3):
+    import subprocess
+    import os
+    import socket
+    print("VIBRANT Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "vibrant_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(vibrant_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def viralverify_app(input1, input2, input3):
+    import subprocess
+    import os
+    import socket
+    print("viralVerify Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "viralverify_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(viralverify_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def viraminer_app(input1, input2, input3):
+    import subprocess
+    import os
+    import socket
+    print("ViraMiner Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "viraminer_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(viraminer_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def metaphinder_app(input1, input2, input3):
+    import subprocess
+    import os
+    import socket
+    print("MetaPhinder Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "metaphinder_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(metaphinder_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def seeker_app(input1, input2, input3):
+    import subprocess
+    import os
+    import socket
+    print("Seeker Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "seeker_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(seeker_output_dir, "contigs_summary", "contigs_virus.fna")
+
+@python_app
+def virsorter_app(input1, input2, input3):
+    import subprocess
+    import os
+    import socket
+    print("VirSorter Running on node:", socket.gethostname(), flush=True)
+    cmd = [
+        "conda", "run", "-n", "virsorter_env"]
+    subprocess.run(cmd, check=True)
+    return os.path.join(virsorter_output_dir, "contigs_summary", "contigs_virus.fna")
+
 
 class ViralDetectionAgent(Agent):
     def __init__(self):
