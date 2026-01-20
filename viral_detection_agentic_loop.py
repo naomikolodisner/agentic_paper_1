@@ -231,7 +231,7 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
     return dvf_fasta_output
 
 @python_app
-def genomad_app(unzipped_spades, genomad_output_dir, db):
+def genomad_app(unzipped_spades, genomad_output_dir, genomad_db):
     import subprocess
     import os
     import socket
@@ -239,21 +239,25 @@ def genomad_app(unzipped_spades, genomad_output_dir, db):
     cmd = [
         "conda", "run", "-n", "genomad_env",
         "genomad", "end-to-end", "--cleanup", "--restart", 
-        unzipped_spades, genomad_output_dir, db
+        unzipped_spades, genomad_output_dir, genomad_db
     ]
     subprocess.run(cmd, check=True)
     return os.path.join(genomad_output_dir, "contigs_summary", "contigs_virus.fna")
 
 @python_app
-def marvel_app(unzipped_spades, marvel_output_dir, db):
+def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
     import subprocess
     import os
     import socket
     print("MARVEL Running on node:", socket.gethostname(), flush=True)
+    os.chdir(marvel_db)
     cmd = [
-        "conda", "run", "-n", "marvel_env"]
+        "conda", "run", "-n", "marvel_env", "python3",
+        "marvel_bins.py", "-i", unzipped_spades, "-t", "16",
+        "-o", marvel_output_dir]
     subprocess.run(cmd, check=True)
-    return os.path.join(marvel_output_dir, "contigs_summary", "contigs_virus.fna")
+    #find out what output directory it creates and name input directory/define number of threads  
+    return os.path.join(marvel_output_dir)
 
 @python_app
 def virfinder_app(input1, input2, input3):
@@ -332,6 +336,26 @@ def virsorter_app(input1, input2, input3):
     subprocess.run(cmd, check=True)
     return os.path.join(virsorter_output_dir, "contigs_summary", "contigs_virus.fna")
 
+async def test_marvel_only():
+    parsl.clear()
+    parsl.load(viral_config)
+    agent = ViralDetectionAgent()
+
+    # ---- HARD-CODE ONE SMALL INPUT FASTA ----
+    unzipped_spades = "/path/to/test_contigs.fasta"
+    marvel_output_dir = "/path/to/test_marvel_out"
+    marvel_db = "/path/to/MARVEL"
+
+    print("[TEST] Starting MARVEL test", flush=True)
+
+    result = await agent.run_marvel(
+        unzipped_spades,
+        marvel_output_dir,
+        marvel_db
+    )
+
+    print("[TEST] MARVEL completed successfully", flush=True)
+    print("[TEST] Output directory:", result, flush=True)
 
 class ViralDetectionAgent(Agent):
     def __init__(self):
@@ -346,8 +370,8 @@ class ViralDetectionAgent(Agent):
         return result
 
     @action
-    async def run_genomad(self, unzipped_spades: str, genomad_output_dir: str, db: str) -> str:
-        future = genomad_app(unzipped_spades, genomad_output_dir, db)
+    async def run_genomad(self, unzipped_spades: str, genomad_output_dir: str, genomad_db: str) -> str:
+        future = genomad_app(unzipped_spades, genomad_output_dir, genomad_db)
         return await asyncio.to_thread(future.result)
 
     @action
@@ -362,14 +386,21 @@ class ViralDetectionAgent(Agent):
         return await asyncio.to_thread(future.result)
 
     @action
-    async def run_tool(self, tool, unzipped_spades: str, genomad_output_dir: str, db: str, 
-                       virsorter_output_dir: str, dvf_output_dir: str, dvf_db: str, 
-                       work_dir: str, script_dir: str) -> str:
+    async def run_marvel(self, unzipped_spades: str, marvel_output_dir: str, marvel_db: str) -> str:
+        future = marvel_app(unzipped_spades, marvel_output_dir, marvel_db)
+        return await asyncio.to_thread(future.result)
+
+    @action
+    async def run_tool(self, tool, unzipped_spades: str, genomad_output_dir: str, genomad_db: str, 
+                       virsorter_output_dir: str, dvf_output_dir: str, dvf_db: str,
+                       work_dir: str, script_dir: str, marvel_output_dir: str, marvel_db: str) -> str:
         
         if tool == "GeNomad":
-            result = await self.run_genomad(unzipped_spades, genomad_output_dir, db)
+            result = await self.run_genomad(unzipped_spades, genomad_output_dir, genomad_db)
         elif tool == "VirSorter2":
             result =  await self.run_virsorter(unzipped_spades, virsorter_output_dir)
+        elif tool == "MARVEL":
+            result == await self.run_marvel(unzipped_spades, marvel_output_dir, marvel_db)
         else:
             result = await self.run_deepvirfinder(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir)
         return result
@@ -866,7 +897,8 @@ class CoordinatorAgent(Agent):
         self.blast_handle = blast_handle
         self.config = make_config(config_path)
         self.selector = ToolSelector(alpha=0.6)
-        self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder"])
+        #self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder", "MARVEL"])
+        self.current_tool = "MARVEL"
         self.quality_ratios_history = []
         self.match_ratios_history = []
         self.shutdown = shutdown_event
@@ -964,17 +996,19 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     spades_gz = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta.gz")
     unzipped_spades_path = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta")
     unzipped_spades = await(await viral_handle.unzip_fasta(spades_gz, unzipped_spades_path))
-    # === GeNomad ===
+    # === Viral Detection ===
     genomad_output_dir = os.path.join(config['OUT_GENOMAD'], sample_id)
-    db = config["GENOMAD_DB"]
+    genomad_db = config["GENOMAD_DB"]
     virsorter_output_dir = os.path.join(config["OUT_VIRSORT"], sample_id)
     dvf_output_dir = os.path.join(config["OUT_DVF"], sample_id)
     dvf_db = config["DVF_DB"]
     work_dir = config["WORK_DIR"]
     script_dir = config["SCRIPT_DIR"]
+    marvel_output_dir = os.path.join(config["OUT_MARVEL"], sample_id)
+    marvel_db = os.path.join(config["MARVEL_DB"])
     start_time = datetime.now()  
-    viral_result = await(await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, db, virsorter_output_dir,
-                                                      dvf_output_dir, dvf_db, work_dir, script_dir))
+    viral_result = await(await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, genomad_db, virsorter_output_dir,
+                                                      dvf_output_dir, dvf_db, work_dir, script_diri, marvel_output_dir, marvel_db))
     end_time = datetime.now()
     elapsed = end_time - start_time
     print(f"{tool} started at {start_time} and ended at {end_time} - duration: {elapsed}", flush=True)    
