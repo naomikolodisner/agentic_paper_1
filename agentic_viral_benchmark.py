@@ -121,7 +121,7 @@ blast_config = Config(
 )
 
 # === Turn config file into a dictionary of variables ===
-
+'''
 def make_config(config_file):
     config = {}
     with open(config_file, "r") as f:
@@ -134,6 +134,8 @@ def make_config(config_file):
             if '=' in line:
                 key, val = line.split('=', 1)
                 config[key.strip()] = val.strip().strip('"').strip("'")
+                val = os.path.expandvars(os.path.expanduser(val))
+                config[key.strip()] = val
     return config
 
 def read_sample_ids(sample_ids_file):
@@ -256,7 +258,7 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
         "marvel_bins.py", "-i", unzipped_spades, "-t", "16",
         "-o", marvel_output_dir]
     subprocess.run(cmd, check=True)
-    #find out what output directory it creates and name input directory/define number of threads  
+    #find out what output directory iates   
     return os.path.join(marvel_output_dir)
 
 @python_app
@@ -335,27 +337,6 @@ def virsorter_app(input1, input2, input3):
         "conda", "run", "-n", "virsorter_env"]
     subprocess.run(cmd, check=True)
     return os.path.join(virsorter_output_dir, "contigs_summary", "contigs_virus.fna")
-
-async def test_marvel_only():
-    parsl.clear()
-    parsl.load(viral_config)
-    agent = ViralDetectionAgent()
-
-    # ---- HARD-CODE ONE SMALL INPUT FASTA ----
-    unzipped_spades = "/path/to/test_contigs.fasta"
-    marvel_output_dir = "/path/to/test_marvel_out"
-    marvel_db = "/path/to/MARVEL"
-
-    print("[TEST] Starting MARVEL test", flush=True)
-
-    result = await agent.run_marvel(
-        unzipped_spades,
-        marvel_output_dir,
-        marvel_db
-    )
-
-    print("[TEST] MARVEL completed successfully", flush=True)
-    print("[TEST] Output directory:", result, flush=True)
 
 class ViralDetectionAgent(Agent):
     def __init__(self):
@@ -966,12 +947,12 @@ class CoordinatorAgent(Agent):
             print(f"[Coordinator] BLAST Match Ratio: {match_ratio:.4f}", flush=True)
             # === Update Tool Score and Select Next Tool ===
             self.selector.update_tool_score(self.current_tool, avg_quality_ratio, match_ratio)
-            self.current_tool = self.selector.choose_tool(["VirSorter2", "DeepVirFinder", "GeNomad"])
+            self.current_tool = self.selector.choose_tool(["VirSorter2", "DeepVirFinder", "GeNomad", "MARVEL"])
             print(f"[Coordinator] Selected tool for next round: {self.current_tool}", flush=True)
             # === Annotation ===
             annotations_dir = self.config['ANNOTATIONS']
             out_annotate = self.config['OUTPUT']
-            script_path = os.path.join(self.config['SCRIPT_DIR'], "solution1_manual.py")
+            script_path = os.path.join(self.config['PROJECT_ROOT'], "solution1_manual.py")
             pctid = self.config['PCTID']
             length = self.config['LENGTH']
             final = annotate_blast(hits_file, annotations_dir, out_annotate, script_path, pctid, length)
@@ -995,7 +976,7 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     # === Unzip ===
     spades_gz = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta.gz")
     unzipped_spades_path = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta")
-    unzipped_spades = await(await viral_handle.unzip_fasta(spades_gz, unzipped_spades_path))
+    unzipped_spades = (await viral_handle.unzip_fasta(spades_gz, unzipped_spades_path))
     # === Viral Detection ===
     genomad_output_dir = os.path.join(config['OUT_GENOMAD'], sample_id)
     genomad_db = config["GENOMAD_DB"]
@@ -1003,12 +984,12 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     dvf_output_dir = os.path.join(config["OUT_DVF"], sample_id)
     dvf_db = config["DVF_DB"]
     work_dir = config["WORK_DIR"]
-    script_dir = config["SCRIPT_DIR"]
+    script_dir = work_dir
     marvel_output_dir = os.path.join(config["OUT_MARVEL"], sample_id)
     marvel_db = os.path.join(config["MARVEL_DB"])
     start_time = datetime.now()  
     viral_result = await(await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, genomad_db, virsorter_output_dir,
-                                                      dvf_output_dir, dvf_db, work_dir, script_diri, marvel_output_dir, marvel_db))
+                                                      dvf_output_dir, dvf_db, work_dir, script_dir, marvel_output_dir, marvel_db))
     end_time = datetime.now()
     elapsed = end_time - start_time
     print(f"{tool} started at {start_time} and ended at {end_time} - duration: {elapsed}", flush=True)    
