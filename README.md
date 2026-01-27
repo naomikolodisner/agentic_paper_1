@@ -1,6 +1,20 @@
 # Agentic Benchmarking
 Agentic Benchmarking - Naomi, Mery, & Bonnie Spring 2026
 
+## File Overview
+
+- **`agentic_viral_benchmark.py`**  
+  Main Python script that coordinates the viral detection workflow. Handles sample processing, tool selection, and benchmarking logic.
+
+- **`CheckV_parser.R`**  
+  R script to parse output from CheckV.
+
+- **`config_py.sh`**  
+  Shell script to set up variables before running the pipeline.
+
+- **`run_viral_detection.sh`**  
+  Shell script to launch the pipeline.
+
 # Downloading All Databases and Environments Needed
 
 ## Genomad

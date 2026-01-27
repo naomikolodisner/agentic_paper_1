@@ -67,7 +67,7 @@ checkv_config = Config(
                ),
           )
      ],
-     usage_tracking=LEVEL_1,
+     usage_tracking=LEVEL_2,
 )
 
 derep_cluster_config = Config(
@@ -121,7 +121,6 @@ blast_config = Config(
 )
 
 # === Turn config file into a dictionary of variables ===
-'''
 def make_config(config_file):
     config = {}
     with open(config_file, "r") as f:
@@ -1043,5 +1042,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
