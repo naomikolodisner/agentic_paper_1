@@ -19,6 +19,7 @@ from parsl.usage_tracking.levels import LEVEL_1
 import random
 import asyncio
 from datetime import datetime
+import config
 
 viral_config = Config(
      executors=[
@@ -67,7 +68,7 @@ checkv_config = Config(
                ),
           )
      ],
-     usage_tracking=LEVEL_2,
+     usage_tracking=LEVEL_1,
 )
 
 derep_cluster_config = Config(
@@ -121,21 +122,35 @@ blast_config = Config(
 )
 
 # === Turn config file into a dictionary of variables ===
-def make_config(config_file):
-    config = {}
-    with open(config_file, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            if line.startswith('export '):
-                line = line[len('export '):]  # Remove 'export '
-            if '=' in line:
-                key, val = line.split('=', 1)
-                config[key.strip()] = val.strip().strip('"').strip("'")
-                val = os.path.expandvars(os.path.expanduser(val))
-                config[key.strip()] = val
-    return config
+import importlib.util
+from pathlib import Path
+
+def make_config(config_path):
+    """
+    Load a Python config file from an arbitrary path and
+    return its variables as a dictionary.
+    """
+    config_path = Path(config_path).resolve()
+    spec = importlib.util.spec_from_file_location(
+        "user_config",
+        config_path
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    cfg = {}
+    for name in dir(module):
+        if name.startswith("_"):
+            continue
+        value = getattr(module, name)
+        # Skip functions, classes, and modules
+        if callable(value):
+            continue
+        # Convert Path objects to strings
+        if isinstance(value, Path):
+            value = str(value)
+        cfg[name] = value
+    return cfg
+
 
 def read_sample_ids(sample_ids_file):
     # Read sample IDs from the file
@@ -200,6 +215,8 @@ def virsorter2_app(unzipped_spades, virsorter2_output_dir):
 def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir):
     import subprocess
     import os
+    if not os.path.exists(dvf_output_dir):
+        os.makedirs(dvf_output_dir)
     os.chdir(dvf_db)
     import socket
     print("DeepVirFinder Running on node:", socket.gethostname(), flush=True)
@@ -236,6 +253,8 @@ def genomad_app(unzipped_spades, genomad_output_dir, genomad_db):
     import subprocess
     import os
     import socket
+    if not os.path.exists(genomad_output_dir):
+        os.makedirs(genomad_output_dir)
     print("GeNomad Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "genomad_env",
@@ -250,6 +269,8 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
     import subprocess
     import os
     import socket
+    if not os.path.exists(marvel_output_dir):
+        os.makedirs(marvel_output_dir)
     print("MARVEL Running on node:", socket.gethostname(), flush=True)
     os.chdir(marvel_db)
     cmd = [
@@ -265,6 +286,8 @@ def virfinder_app(input1, input2, input3):
     import subprocess
     import os
     import socket
+    if not os.path.exists(virfinder_output_dir):
+        os.makedirs(virfinder_output_dir)
     print("VirFinder Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "virfinder_env"]
@@ -276,6 +299,8 @@ def vibrant_app(input1, input2, input3):
     import subprocess
     import os
     import socket
+    if not os.path.exists(vibrant_output_dir):
+        os.makedirs(vibrant_output_dir)
     print("VIBRANT Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "vibrant_env"]
@@ -287,6 +312,8 @@ def viralverify_app(input1, input2, input3):
     import subprocess
     import os
     import socket
+    if not os.path.exists(viralverify_output_dir):
+        os.makedirs(viralverify_output_dir)
     print("viralVerify Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "viralverify_env"]
@@ -298,6 +325,8 @@ def viraminer_app(input1, input2, input3):
     import subprocess
     import os
     import socket
+    if not os.path.exists(viraminer_output_dir):
+        os.makedirs(viraminer_output_dir)
     print("ViraMiner Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "viraminer_env"]
@@ -309,6 +338,8 @@ def metaphinder_app(input1, input2, input3):
     import subprocess
     import os
     import socket
+    if not os.path.exists(metaphinder_output_dir):
+        os.makedirs(metaphinder_output_dir)
     print("MetaPhinder Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "metaphinder_env"]
@@ -320,6 +351,8 @@ def seeker_app(input1, input2, input3):
     import subprocess
     import os
     import socket
+    if not os.path.exists(seeker_output_dir):
+        os.makedirs(seeker_output_dir)
     print("Seeker Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "seeker_env"]
@@ -331,6 +364,8 @@ def virsorter_app(input1, input2, input3):
     import subprocess
     import os
     import socket
+    if not os.path.exists(virsorter_output_dir):
+        os.makedirs(virsorter_output_dir)
     print("VirSorter Running on node:", socket.gethostname(), flush=True)
     cmd = [
         "conda", "run", "-n", "virsorter_env"]
@@ -355,8 +390,8 @@ class ViralDetectionAgent(Agent):
         return await asyncio.to_thread(future.result)
 
     @action
-    async def run_virsorter(self, unzipped_spades: str, virsorter_output_dir: str) -> str:
-        future = virsorter_app(unzipped_spades, virsorter_output_dir)
+    async def run_virsorter2(self, unzipped_spades: str, virsorter2_output_dir: str) -> str:
+        future = virsorter2_app(unzipped_spades, virsorter2_output_dir)
         return await asyncio.to_thread(future.result)
 
     @action
@@ -372,13 +407,13 @@ class ViralDetectionAgent(Agent):
 
     @action
     async def run_tool(self, tool, unzipped_spades: str, genomad_output_dir: str, genomad_db: str, 
-                       virsorter_output_dir: str, dvf_output_dir: str, dvf_db: str,
+                       virsorter2_output_dir: str, dvf_output_dir: str, dvf_db: str,
                        work_dir: str, script_dir: str, marvel_output_dir: str, marvel_db: str) -> str:
         
         if tool == "GeNomad":
             result = await self.run_genomad(unzipped_spades, genomad_output_dir, genomad_db)
         elif tool == "VirSorter2":
-            result =  await self.run_virsorter(unzipped_spades, virsorter_output_dir)
+            result =  await self.run_virsorter2(unzipped_spades, virsorter2_output_dir)
         elif tool == "MARVEL":
             result == await self.run_marvel(unzipped_spades, marvel_output_dir, marvel_db)
         else:
@@ -888,6 +923,7 @@ class CoordinatorAgent(Agent):
         while not shutdown.is_set():
             print(f"\n=== [Coordinator] Starting round {round_count+1} with tool: {self.current_tool} ===", flush=True)
             sample_ids_file = os.path.join(self.config['XFILE_DIR'], self.config['XFILE'])
+            #sample_ids_file = os.path.join(config.XFILE_DIR, config.XFILE)
             sample_ids = read_sample_ids(sample_ids_file)
             first_sample_id = sample_ids[0]
             # Run per-sample
@@ -974,12 +1010,15 @@ class CoordinatorAgent(Agent):
 async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, cluster_handle, first_sample_id):   
     # === Unzip ===
     spades_gz = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta.gz")
+    #spades_gz = os.path.join(config.SPADES_DIR, sample_id, "contigs.fasta.gz")
     unzipped_spades_path = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta")
+    #unzipped_spades_path = os.path.join(config.SPADES_DIR, sample_id, "contigs.fasta")
     unzipped_spades = (await viral_handle.unzip_fasta(spades_gz, unzipped_spades_path))
+
     # === Viral Detection ===
     genomad_output_dir = os.path.join(config['OUT_GENOMAD'], sample_id)
     genomad_db = config["GENOMAD_DB"]
-    virsorter_output_dir = os.path.join(config["OUT_VIRSORT"], sample_id)
+    virsorter2_output_dir = os.path.join(config["OUT_VIRSORT"], sample_id)
     dvf_output_dir = os.path.join(config["OUT_DVF"], sample_id)
     dvf_db = config["DVF_DB"]
     work_dir = config["WORK_DIR"]
@@ -987,7 +1026,7 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     marvel_output_dir = os.path.join(config["OUT_MARVEL"], sample_id)
     marvel_db = os.path.join(config["MARVEL_DB"])
     start_time = datetime.now()  
-    viral_result = await(await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, genomad_db, virsorter_output_dir,
+    viral_result = await(await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, genomad_db, virsorter2_output_dir,
                                                       dvf_output_dir, dvf_db, work_dir, script_dir, marvel_output_dir, marvel_db))
     end_time = datetime.now()
     elapsed = end_time - start_time
@@ -1029,7 +1068,7 @@ async def main():
         checkv_handle = await manager.launch(CheckVAgent())
         cluster_handle = await manager.launch(DereplicationClusteringAgent())
         blast_handle = await manager.launch(BLASTAgent())
-        config_path = os.path.join(os.getcwd(), "config_py.sh")
+        config_path = os.path.join(os.getcwd(), "config.py")
         coordinator = await manager.launch(
             CoordinatorAgent,
             args=(viral_handle, checkv_handle, cluster_handle, blast_handle, config_path, shutdown_event)
