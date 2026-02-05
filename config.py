@@ -45,12 +45,12 @@ DVF_DB = DB_ROOT / "DeepVirFinder"
 OUT_CHECKV_DVF = OUT_CHECKV / "02B_dvf"
 
 # geNomad
-OUT_GENOMAD = RESULTS_ROOT / "viral_detection" / "01C_genomad"
+OUT_GENOMAD = RESULTS_ROOT / "01_viral_detection" / "01C_genomad"
 GENOMAD_DB = DB_ROOT / "genomad_db"
 OUT_CHECKV_GENOMAD = OUT_CHECKV / "02C_genomad"
 
 # MARVEL
-OUT_MARVEL = RESULTS_ROOT / "viral_detection" / "01D_marvel"
+OUT_MARVEL = RESULTS_ROOT / "01_viral_detection" / "01D_marvel"
 MARVEL_DB = DB_ROOT / "MARVEL"
 OUT_CHECKV_MARVEL = OUT_CHECKV / "02D_marvel"
 

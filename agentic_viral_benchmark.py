@@ -29,15 +29,15 @@ viral_config = Config(
                cores_per_worker=1.0,
                max_workers_per_node=94,
                provider=SlurmProvider(
-                    partition='windfall',
-                    #account='bhurwitz',
+                    partition='standard',
+                    account='gwatts',
                     init_blocks=1,
                     mem_per_node=80,
                     cores_per_node=94,
-                    nodes_per_block=7,
+                    nodes_per_block=1,
                     scheduler_options='',
                     cmd_timeout=60,
-                    walltime='40:00:00',
+                    walltime='1:00:00',
                     launcher=SrunLauncher(),
                     worker_init='',
                ),
@@ -54,15 +54,15 @@ checkv_config = Config(
                cores_per_worker=1.0,
                max_workers_per_node=94,
                provider=SlurmProvider(
-                    partition='windfall',
-                    #account='bhurwitz',
+                    partition='standard',
+                    account='gwatts',
                     init_blocks=1,
                     mem_per_node=80,
                     cores_per_node=94,
-                    nodes_per_block=7,
+                    nodes_per_block=1,
                     scheduler_options='',
                     cmd_timeout=60,
-                    walltime='40:00:00',
+                    walltime='1:00:00',
                     launcher=SrunLauncher(),
                     worker_init='',
                ),
@@ -79,15 +79,15 @@ derep_cluster_config = Config(
                cores_per_worker=1.0,
                max_workers_per_node=94,
                provider=SlurmProvider(
-                    partition='windfall',
-                    #account='bhurwitz',
+                    partition='standard',
+                    account='gwatts',
                     init_blocks=1,
                     mem_per_node=80,
                     cores_per_node=94,
-                    nodes_per_block=7,
+                    nodes_per_block=1,
                     scheduler_options='',
                     cmd_timeout=60,
-                    walltime='40:00:00',
+                    walltime='1:00:00',
                     launcher=SrunLauncher(),
                     worker_init='',
                ),
@@ -104,15 +104,15 @@ blast_config = Config(
                cores_per_worker=1.0,
                max_workers_per_node=94,
                provider=SlurmProvider(
-                    partition='windfall',
-                    #account='bhurwitz',
+                    partition='standard',
+                    account='gwatts',
                     init_blocks=1,
                     mem_per_node=80,
                     cores_per_node=94,
-                    nodes_per_block=7,
+                    nodes_per_block=1,
                     scheduler_options='',
                     cmd_timeout=60,
-                    walltime='40:00:00',
+                    walltime='1:00:00',
                     launcher=SrunLauncher(),
                     worker_init='',
                ),
@@ -269,17 +269,18 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
     import subprocess
     import os
     import socket
+    import shutil
     if not os.path.exists(marvel_output_dir):
         os.makedirs(marvel_output_dir)
     print("MARVEL Running on node:", socket.gethostname(), flush=True)
-    os.chdir(marvel_db)
+    unzipped_spades_marvel = os.path.dirname(unzipped_spades) 
     cmd = [
         "conda", "run", "-n", "marvel_env", "python3",
-        "marvel_bins.py", "-i", unzipped_spades, "-t", "16",
+        "marvel_bins.py", "-i", unzipped_spades_marvel, "-t", "16",
         "-o", marvel_output_dir]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, cwd=marvel_db)
     #find out what output directory iates   
-    return os.path.join(marvel_output_dir)
+    return os.path.join(marvel_output_dir, "output_contigs.fna")
 
 @python_app
 def virfinder_app(input1, input2, input3):
@@ -403,7 +404,8 @@ class ViralDetectionAgent(Agent):
     @action
     async def run_marvel(self, unzipped_spades: str, marvel_output_dir: str, marvel_db: str) -> str:
         future = marvel_app(unzipped_spades, marvel_output_dir, marvel_db)
-        return await asyncio.to_thread(future.result)
+        marvel_result = await asyncio.to_thread(future.result)
+        return marvel_result
 
     @action
     async def run_tool(self, tool, unzipped_spades: str, genomad_output_dir: str, genomad_db: str, 
@@ -415,7 +417,7 @@ class ViralDetectionAgent(Agent):
         elif tool == "VirSorter2":
             result =  await self.run_virsorter2(unzipped_spades, virsorter2_output_dir)
         elif tool == "MARVEL":
-            result == await self.run_marvel(unzipped_spades, marvel_output_dir, marvel_db)
+            result = await self.run_marvel(unzipped_spades, marvel_output_dir, marvel_db)
         else:
             result = await self.run_deepvirfinder(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir)
         return result
@@ -499,7 +501,6 @@ class CheckVAgent(Agent):
         parse_input: str, selection_csv: str, checkvdb: str
     ) -> str:
 
-        # Run the Parsl app
         future = checkv_app(
             checkv_parser, parse_length, work_dir,
             unzipped_spades, viral_result, checkv_output_dir,
@@ -508,7 +509,6 @@ class CheckVAgent(Agent):
 
         # Await the result asynchronously
         subset_spades, quality_ratio = await asyncio.to_thread(future.result)
-
         return subset_spades, quality_ratio
 
 # === Dereplication/Clustering Agent ===
@@ -1010,9 +1010,7 @@ class CoordinatorAgent(Agent):
 async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, cluster_handle, first_sample_id):   
     # === Unzip ===
     spades_gz = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta.gz")
-    #spades_gz = os.path.join(config.SPADES_DIR, sample_id, "contigs.fasta.gz")
     unzipped_spades_path = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta")
-    #unzipped_spades_path = os.path.join(config.SPADES_DIR, sample_id, "contigs.fasta")
     unzipped_spades = (await viral_handle.unzip_fasta(spades_gz, unzipped_spades_path))
 
     # === Viral Detection ===
@@ -1026,8 +1024,7 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     marvel_output_dir = os.path.join(config["OUT_MARVEL"], sample_id)
     marvel_db = os.path.join(config["MARVEL_DB"])
     start_time = datetime.now()  
-    viral_result = await(await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, genomad_db, virsorter2_output_dir,
-                                                      dvf_output_dir, dvf_db, work_dir, script_dir, marvel_output_dir, marvel_db))
+    viral_result = await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, genomad_db, virsorter2_output_dir,dvf_output_dir, dvf_db, work_dir, script_dir, marvel_output_dir, marvel_db)
     end_time = datetime.now()
     elapsed = end_time - start_time
     print(f"{tool} started at {start_time} and ended at {end_time} - duration: {elapsed}", flush=True)    
@@ -1040,9 +1037,7 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     parse_input = os.path.join(checkv_output_dir, "contamination.tsv")
     selection_csv = os.path.join(checkv_output_dir, "selection2_viral.csv")
     checkvdb = config["CHECKVDB"]
-    subset_spades, quality_ratio = await(await checkv_handle.run_checkv(
-        checkv_parser, parse_length, work_dir, unzipped_spades, viral_result,
-        checkv_output_dir, parse_input, selection_csv, checkvdb))
+    subset_spades, quality_ratio = await checkv_handle.run_checkv(checkv_parser, parse_length, work_dir, unzipped_spades, viral_result, checkv_output_dir, parse_input, selection_csv, checkvdb)
     print(quality_ratio, flush=True)
     # === Dereplication ===
     cluster_dir = os.path.join(config["OUT_DEREP"], sample_id)
