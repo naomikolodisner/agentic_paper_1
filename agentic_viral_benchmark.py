@@ -26,19 +26,22 @@ viral_config = Config(
           HighThroughputExecutor(
                label="Parsl_htex",
                worker_debug=False,
-               cores_per_worker=1.0,
-               max_workers_per_node=94,
+               cores_per_worker=8.0,
+               max_workers_per_node=6,
                provider=SlurmProvider(
                     partition='standard',
                     account='gwatts',
                     init_blocks=1,
                     mem_per_node=80,
-                    cores_per_node=94,
+                    cores_per_node=48,
                     nodes_per_block=1,
                     scheduler_options='',
+                    exclusive=True,
+                    #scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
                     cmd_timeout=60,
-                    walltime='1:00:00',
-                    launcher=SrunLauncher(),
+                    walltime='12:00:00',
+                    #launcher=SrunLauncher(),
+                    launcher=SrunLauncher(overrides="--time=12:00:00"),
                     worker_init='',
                ),
           )
@@ -51,19 +54,22 @@ checkv_config = Config(
           HighThroughputExecutor(
                label="Parsl_htex",
                worker_debug=False,
-               cores_per_worker=1.0,
-               max_workers_per_node=94,
+               cores_per_worker=8.0,
+               max_workers_per_node=6,
                provider=SlurmProvider(
                     partition='standard',
                     account='gwatts',
                     init_blocks=1,
                     mem_per_node=80,
-                    cores_per_node=94,
+                    cores_per_node=48,
                     nodes_per_block=1,
                     scheduler_options='',
+                    #scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
+                    exclusive=True,
                     cmd_timeout=60,
-                    walltime='1:00:00',
-                    launcher=SrunLauncher(),
+                    walltime='4:00:00',
+                    #launcher=SrunLauncher(),
+                    launcher=SrunLauncher(overrides="--time=4:00:00"),
                     worker_init='',
                ),
           )
@@ -279,8 +285,7 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
         "marvel_bins.py", "-i", unzipped_spades_marvel, "-t", "16",
         "-o", marvel_output_dir]
     subprocess.run(cmd, cwd=marvel_db)
-    #find out what output directory iates   
-    return os.path.join(marvel_output_dir, "output_contigs.fna")
+    return os.path.join(marvel_output_dir, "prokka", "contigs", "prokka_results_contigs.fna")
 
 @python_app
 def virfinder_app(input1, input2, input3):
@@ -437,7 +442,7 @@ def checkv_app(checkv_parser, parse_length, work_dir,
     os.makedirs(checkv_output_dir)
 
     cmd_checkv = [
-        "conda", "run", "-n", "checkv_env", "checkv", "end_to_end",
+        "conda", "run", "-n", "checkv", "checkv", "end_to_end",
         viral_result, checkv_output_dir, "-t", "4", "-d", checkvdb
     ]
     cmd_parser = [

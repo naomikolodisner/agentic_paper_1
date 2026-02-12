@@ -2,12 +2,13 @@
 #SBATCH --job-name=viral_benchmark
 #SBATCH --output=viral_benchmark_%j.log
 #SBATCH --error=viral_benchmark_%j.err
-#SBATCH --time=10:00:00
+#SBATCH --time=20:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mem=16G
+#SBATCH --mem=4G
 #SBATCH --partition=standard
 #SBATCH --account=gwatts
+#SBATCH --cpus-per-task=4
 
 
 #load environment
