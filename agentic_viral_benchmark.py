@@ -26,8 +26,8 @@ viral_config = Config(
           HighThroughputExecutor(
                label="Parsl_htex",
                worker_debug=False,
-               cores_per_worker=8.0,
-               max_workers_per_node=6,
+               cores_per_worker=16.0,
+               max_workers_per_node=3,
                provider=SlurmProvider(
                     partition='standard',
                     account='gwatts',
@@ -35,10 +35,10 @@ viral_config = Config(
                     mem_per_node=80,
                     cores_per_node=48,
                     nodes_per_block=1,
-                    scheduler_options='',
+                    #scheduler_options='',
                     exclusive=True,
-                    #scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
-                    cmd_timeout=60,
+                    scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
+                    cmd_timeout=60*60*12,
                     walltime='12:00:00',
                     #launcher=SrunLauncher(),
                     launcher=SrunLauncher(overrides="--time=12:00:00"),
@@ -54,8 +54,8 @@ checkv_config = Config(
           HighThroughputExecutor(
                label="Parsl_htex",
                worker_debug=False,
-               cores_per_worker=8.0,
-               max_workers_per_node=6,
+               cores_per_worker=16.0,
+               max_workers_per_node=3,
                provider=SlurmProvider(
                     partition='standard',
                     account='gwatts',
@@ -63,10 +63,10 @@ checkv_config = Config(
                     mem_per_node=80,
                     cores_per_node=48,
                     nodes_per_block=1,
-                    scheduler_options='',
-                    #scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
+                    #scheduler_options='',
+                    scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
                     exclusive=True,
-                    cmd_timeout=60,
+                    cmd_timeout=60*60*12,
                     walltime='4:00:00',
                     #launcher=SrunLauncher(),
                     launcher=SrunLauncher(overrides="--time=4:00:00"),
@@ -284,24 +284,46 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
         "conda", "run", "-n", "marvel_env", "python3",
         "marvel_bins.py", "-i", unzipped_spades_marvel, "-t", "16",
         "-o", marvel_output_dir]
-    subprocess.run(cmd, cwd=marvel_db)
+    #subprocess.run(cmd, cwd=marvel_db)
+    result = subprocess.run(cmd, cwd=marvel_db, capture_output=True, text=True)
+    print("MARVEL stdout:\n", result.stdout)
+    print("MARVEL stderr:\n", result.stderr)
+    result.check_returncode()  # Will raise CalledProcessError if exit != 0
+    #subprocess.run(cmd, cwd=marvel_db, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return os.path.join(marvel_output_dir, "prokka", "contigs", "prokka_results_contigs.fna")
 
 @python_app
-def virfinder_app(input1, input2, input3):
+def virfinder_app(unzipped_spades, virfinder_output_dir):
     import subprocess
     import os
     import socket
     if not os.path.exists(virfinder_output_dir):
         os.makedirs(virfinder_output_dir)
     print("VirFinder Running on node:", socket.gethostname(), flush=True)
-    cmd = [
-        "conda", "run", "-n", "virfinder_env"]
-    subprocess.run(cmd, check=True)
-    return os.path.join(virfinder_output_dir, "contigs_summary", "contigs_virus.fna")
+    vf_tsv = os.path.join(virfinder_output_dir, "virfinder_results.tsv")
+    viral_fasta = os.path.join(virfinder_output_dir, "viral_contigs.fna")
+    ids_file = os.path.join(virfinder_output_dir, "viral_ids.txt")
+    q_cutoff = 0.05
+    r_script = f"""
+    library(VirFinder)
+    res <- VF.pref("{input_fasta}")
+    write.table(res, file="{vf_tsv}", sep="\\t", row.names=FALSE, quote=FALSE)
+    """
+    cmd_vf = [
+        "conda", "run", "-n", "virfinder",
+        "Rscript", "-e", r_script]
+    subprocess.run(cmd_vf, check=True)
+    cmd_filter = (
+            f"awk -F '\\t' 'NR>1 && $5 < {q_cutoff} {{print $1}}' "
+            f"{vf_tsv} > {ids_file}"
+            )
+    subprocess.run(cmd_filter, shell=True, check=True)
+    cmd_extract = f"seqkit grep -f {ids_file} {unzipped_spades} > {viral_fasta}"
+    subprocess.run(cmd_extract, shell=True, check=True)
+    return viral_fasta
 
 @python_app
-def vibrant_app(input1, input2, input3):
+def vibrant_app(unzipped_spades, vibrant_db, vibrant_output_dir):
     import subprocess
     import os
     import socket
@@ -309,12 +331,15 @@ def vibrant_app(input1, input2, input3):
         os.makedirs(vibrant_output_dir)
     print("VIBRANT Running on node:", socket.gethostname(), flush=True)
     cmd = [
-        "conda", "run", "-n", "vibrant_env"]
+        "conda", "run", "-n", "vibrant",
+        "python3", vibrant_db, "-i", unzipped_spades,
+        "folder", vibrant_output_dir, "-t", "16", 
+        "-f", "nucl", "-no_plot"]
     subprocess.run(cmd, check=True)
-    return os.path.join(vibrant_output_dir, "contigs_summary", "contigs_virus.fna")
+    return os.path.join(vibrant_output_dir)
 
 @python_app
-def viralverify_app(input1, input2, input3):
+def viralverify_app(unzipped_spades, viralverify_output_dir, hmm_db):
     import subprocess
     import os
     import socket
@@ -322,22 +347,34 @@ def viralverify_app(input1, input2, input3):
         os.makedirs(viralverify_output_dir)
     print("viralVerify Running on node:", socket.gethostname(), flush=True)
     cmd = [
-        "conda", "run", "-n", "viralverify_env"]
+        "conda", "run", "-n", "viralverify", "viralverify", "-f",
+        unzipped_spades, "-o", viralverify_output_dir, "--hmm", hmm_db]
     subprocess.run(cmd, check=True)
-    return os.path.join(viralverify_output_dir, "contigs_summary", "contigs_virus.fna")
+    return os.path.join(viralverify_output_dir)
 
 @python_app
-def viraminer_app(input1, input2, input3):
+def viraminer_app(unzipped_spades, viraminer_db, viraminer_output_dir):
     import subprocess
     import os
     import socket
+    import csv
+    from Bio import SeqIO
     if not os.path.exists(viraminer_output_dir):
         os.makedirs(viraminer_output_dir)
     print("ViraMiner Running on node:", socket.gethostname(), flush=True)
+    csv_file = os.path.join(viraminer_output_dir, "viraminer_input.csv")
+    with open(csv_file, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["seq_id", "sequence", "label"])
+        for record in SeqIO.parse(unzipped_spades, "fasta"):
+            writer.writerow([record.id, str(record.seq), 0])
+    output_txt = os.path.join(viraminer_output_dir, "viraminer_predictions.txt")
     cmd = [
-        "conda", "run", "-n", "viraminer_env"]
-    subprocess.run(cmd, check=True)
-    return os.path.join(viraminer_output_dir, "contigs_summary", "contigs_virus.fna")
+        "conda", "run", "-n", "viraminer", "python2", "predict_only.py",
+        "--input_file", csv_file, "--model_path", viraminer_db]
+    with open(output_txt, "w") as out_file:
+        subprocess.run(cmd, stdout=outfile, check=True)
+    return output_txt
 
 @python_app
 def metaphinder_app(input1, input2, input3):
@@ -409,13 +446,21 @@ class ViralDetectionAgent(Agent):
     @action
     async def run_marvel(self, unzipped_spades: str, marvel_output_dir: str, marvel_db: str) -> str:
         future = marvel_app(unzipped_spades, marvel_output_dir, marvel_db)
-        marvel_result = await asyncio.to_thread(future.result)
+        #marvel_result = await asyncio.to_thread(future.result)
+        marvel_result = future.result()
         return marvel_result
+
+    @action
+    async def run_virfinder(self, unzipped_spades: str, virfinder_output_dir: str) -> str:
+        future = virfinder_app(unzipped_spades, virfinder_output_dir)
+        virfinder_result = await future
+        return virfinder_result
 
     @action
     async def run_tool(self, tool, unzipped_spades: str, genomad_output_dir: str, genomad_db: str, 
                        virsorter2_output_dir: str, dvf_output_dir: str, dvf_db: str,
-                       work_dir: str, script_dir: str, marvel_output_dir: str, marvel_db: str) -> str:
+                       work_dir: str, script_dir: str, marvel_output_dir: str, marvel_db: str,
+                       virfinder_output_dir: str) -> str:
         
         if tool == "GeNomad":
             result = await self.run_genomad(unzipped_spades, genomad_output_dir, genomad_db)
@@ -423,6 +468,8 @@ class ViralDetectionAgent(Agent):
             result =  await self.run_virsorter2(unzipped_spades, virsorter2_output_dir)
         elif tool == "MARVEL":
             result = await self.run_marvel(unzipped_spades, marvel_output_dir, marvel_db)
+        elif tool == "VirFinder":
+            result = await self.run_virfinder(unzipped_spades, virfinder_output_dir)
         else:
             result = await self.run_deepvirfinder(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir)
         return result
@@ -1028,8 +1075,11 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     script_dir = work_dir
     marvel_output_dir = os.path.join(config["OUT_MARVEL"], sample_id)
     marvel_db = os.path.join(config["MARVEL_DB"])
+    virfinder_output_dir = os.path.join(config["OUT_VIRFINDER"], sample_id)
     start_time = datetime.now()  
-    viral_result = await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, genomad_db, virsorter2_output_dir,dvf_output_dir, dvf_db, work_dir, script_dir, marvel_output_dir, marvel_db)
+    viral_result = await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, 
+            genomad_db, virsorter2_output_dir,dvf_output_dir, dvf_db, work_dir, script_dir, 
+            marvel_output_dir, marvel_db, virfinder_output_dir)
     end_time = datetime.now()
     elapsed = end_time - start_time
     print(f"{tool} started at {start_time} and ended at {end_time} - duration: {elapsed}", flush=True)    
