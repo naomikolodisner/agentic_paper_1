@@ -38,7 +38,8 @@ viral_config = Config(
                     #scheduler_options='',
                     exclusive=True,
                     scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
-                    cmd_timeout=60*60*12,
+                    #cmd_timeout=60*60*12,
+                    cmd_timeout = 300
                     walltime='12:00:00',
                     #launcher=SrunLauncher(),
                     launcher=SrunLauncher(overrides="--time=12:00:00"),
@@ -284,12 +285,7 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
         "conda", "run", "-n", "marvel_env", "python3",
         "marvel_bins.py", "-i", unzipped_spades_marvel, "-t", "16",
         "-o", marvel_output_dir]
-    #subprocess.run(cmd, cwd=marvel_db)
-    result = subprocess.run(cmd, cwd=marvel_db, capture_output=True, text=True)
-    print("MARVEL stdout:\n", result.stdout)
-    print("MARVEL stderr:\n", result.stderr)
-    result.check_returncode()  # Will raise CalledProcessError if exit != 0
-    #subprocess.run(cmd, cwd=marvel_db, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(cmd, cwd=marvel_db, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return os.path.join(marvel_output_dir, "prokka", "contigs", "prokka_results_contigs.fna")
 
 @python_app
@@ -306,7 +302,7 @@ def virfinder_app(unzipped_spades, virfinder_output_dir):
     q_cutoff = 0.05
     r_script = f"""
     library(VirFinder)
-    res <- VF.pref("{input_fasta}")
+    res <- VF.pred("{unzipped_spades}")
     write.table(res, file="{vf_tsv}", sep="\\t", row.names=FALSE, quote=FALSE)
     """
     cmd_vf = [
@@ -377,7 +373,7 @@ def viraminer_app(unzipped_spades, viraminer_db, viraminer_output_dir):
     return output_txt
 
 @python_app
-def metaphinder_app(input1, input2, input3):
+def metaphinder_app(unzipped_spades, metaphinder_db, blast_path, metaphinder_output_dir):
     import subprocess
     import os
     import socket
@@ -385,35 +381,50 @@ def metaphinder_app(input1, input2, input3):
         os.makedirs(metaphinder_output_dir)
     print("MetaPhinder Running on node:", socket.gethostname(), flush=True)
     cmd = [
-        "conda", "run", "-n", "metaphinder_env"]
-    subprocess.run(cmd, check=True)
+        "conda", "run", "-n", "metaphinder", "python", "MetaPhinder,py"
+        "-i", unzipped_spades, "-d", metaphinder_db, "-b", blast_path, 
+        "-o", metaphinder_output_dir]
+    subprocess.run(cmd, cwd=metaphinder_db, check=True)
     return os.path.join(metaphinder_output_dir, "contigs_summary", "contigs_virus.fna")
 
 @python_app
-def seeker_app(input1, input2, input3):
+def seeker_app(unzipped_spades, seeker_output_dir):
     import subprocess
     import os
     import socket
     if not os.path.exists(seeker_output_dir):
         os.makedirs(seeker_output_dir)
     print("Seeker Running on node:", socket.gethostname(), flush=True)
+    threshold=0.5
+    out_fasta = os.path.join(seeker_output_dir, "seeker_phage_contigs.fa")
+    seeker_script = textwrap.dedent(f"""
+        from seeker import SeekerFasta
+        seeker_fasta = SeekerFasta("{contigs_fasta}")
+        seeker_fasta.meta2fasta(
+            out_fasta_path="{out_fasta}",
+            threshold={threshold}
+        )
+    """)
     cmd = [
-        "conda", "run", "-n", "seeker_env"]
+        "conda", "run", "-n", "seeker", "python", "-c", seeker_script]
     subprocess.run(cmd, check=True)
-    return os.path.join(seeker_output_dir, "contigs_summary", "contigs_virus.fna")
+    return out_fasta
 
 @python_app
-def virsorter_app(input1, input2, input3):
+def virsorter_app(unzipped_spades, virsorter_db, virsorter_output_dir):
     import subprocess
     import os
     import socket
     if not os.path.exists(virsorter_output_dir):
         os.makedirs(virsorter_output_dir)
     print("VirSorter Running on node:", socket.gethostname(), flush=True)
+    threads=4
     cmd = [
-        "conda", "run", "-n", "virsorter_env"]
+        "conda", "run", "-n", "virsorter", "wrapper_phage_contigs_sorter_iPlant.pl",
+        "-f", unzipped_spades, "--db", "1", "--wdir", virsorter_output_dir, "--ncpu",
+        str(threads), "--data-dir", virsorter_db]
     subprocess.run(cmd, check=True)
-    return os.path.join(virsorter_output_dir, "contigs_summary", "contigs_virus.fna")
+    return os.path.join(virsorter_output_dir, "Predicted_viral_sequences", "VIRSorter_predicted_viral_sequences.fasta")
 
 class ViralDetectionAgent(Agent):
     def __init__(self):
@@ -453,7 +464,8 @@ class ViralDetectionAgent(Agent):
     @action
     async def run_virfinder(self, unzipped_spades: str, virfinder_output_dir: str) -> str:
         future = virfinder_app(unzipped_spades, virfinder_output_dir)
-        virfinder_result = await future
+        #virfinder_result = future.result()
+        virfinder_result = await asyncio.to_thread(future.result)
         return virfinder_result
 
     @action
@@ -964,8 +976,8 @@ class CoordinatorAgent(Agent):
         self.blast_handle = blast_handle
         self.config = make_config(config_path)
         self.selector = ToolSelector(alpha=0.6)
-        #self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder", "MARVEL"])
-        self.current_tool = "MARVEL"
+        #self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder", "MARVEL", "VirFinder"])
+        self.current_tool = "VirFinder"
         self.quality_ratios_history = []
         self.match_ratios_history = []
         self.shutdown = shutdown_event

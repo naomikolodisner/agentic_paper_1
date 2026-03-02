@@ -54,6 +54,11 @@ OUT_MARVEL = RESULTS_ROOT / "01_viral_detection" / "01D_marvel"
 MARVEL_DB = DB_ROOT / "MARVEL"
 OUT_CHECKV_MARVEL = OUT_CHECKV / "02D_marvel"
 
+#VirFinder
+OUT_VIRFINDER = RESULTS_ROOT / "01_viral_detection" / "01E_virfinder"
+OUT_CHECKV_VIRFINDER = OUT_CHECKV / "02E_virfinder"
+
+
 ############################
 # Dereplication & clustering
 ############################

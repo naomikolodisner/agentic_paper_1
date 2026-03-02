@@ -218,3 +218,5 @@ db/
 cmd*
 agentic_testing/
 *.err
+test*
+data/
