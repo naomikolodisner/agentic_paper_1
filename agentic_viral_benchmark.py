@@ -27,22 +27,21 @@ viral_config = Config(
                label="Parsl_htex",
                worker_debug=False,
                cores_per_worker=16.0,
-               max_workers_per_node=3,
+               max_workers_per_node=4,
                provider=SlurmProvider(
                     partition='standard',
                     account='gwatts',
                     init_blocks=1,
                     mem_per_node=80,
-                    cores_per_node=48,
+                    cores_per_node=94,
                     nodes_per_block=1,
-                    #scheduler_options='',
+                    scheduler_options='',
                     exclusive=True,
-                    scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
-                    #cmd_timeout=60*60*12,
-                    cmd_timeout = 300
+                    #scheduler_options='#SBATCH --time=12:00:00',  # force 12h for each step
+                    #cmd_timeout = 300,
                     walltime='12:00:00',
-                    #launcher=SrunLauncher(),
-                    launcher=SrunLauncher(overrides="--time=12:00:00"),
+                    #launcher=SrunLauncher(overrides="--time=12:00:00"),
+                    launcher=SrunLauncher(),
                     worker_init='',
                ),
           )
@@ -305,9 +304,11 @@ def virfinder_app(unzipped_spades, virfinder_output_dir):
     res <- VF.pred("{unzipped_spades}")
     write.table(res, file="{vf_tsv}", sep="\\t", row.names=FALSE, quote=FALSE)
     """
-    cmd_vf = [
-        "conda", "run", "-n", "virfinder",
-        "Rscript", "-e", r_script]
+    #cmd_vf = [
+    #    "conda", "run", "-n", "virfinder",
+    #    "Rscript", "-e", r_script]
+    rscript_path = os.path.expanduser("~/.conda/envs/virfinder/bin/Rscript")
+    cmd_vf = [rscript_path, "-e", r_script]
     subprocess.run(cmd_vf, check=True)
     cmd_filter = (
             f"awk -F '\\t' 'NR>1 && $5 < {q_cutoff} {{print $1}}' "
@@ -326,11 +327,13 @@ def vibrant_app(unzipped_spades, vibrant_db, vibrant_output_dir):
     if not os.path.exists(vibrant_output_dir):
         os.makedirs(vibrant_output_dir)
     print("VIBRANT Running on node:", socket.gethostname(), flush=True)
+    vibrant_script = os.path.join(vibrant_db, "VIBRANT/VIBRANT_run.py")
     cmd = [
         "conda", "run", "-n", "vibrant",
-        "python3", vibrant_db, "-i", unzipped_spades,
-        "folder", vibrant_output_dir, "-t", "16", 
-        "-f", "nucl", "-no_plot"]
+        "python3", vibrant_script,
+        "-i", unzipped_spades,
+        "-folder", vibrant_output_dir, "-d", vibrant_db, 
+        "-t", "16", "-f", "nucl", "-no_plot"]
     subprocess.run(cmd, check=True)
     return os.path.join(vibrant_output_dir)
 
@@ -342,9 +345,11 @@ def viralverify_app(unzipped_spades, viralverify_output_dir, hmm_db):
     if not os.path.exists(viralverify_output_dir):
         os.makedirs(viralverify_output_dir)
     print("viralVerify Running on node:", socket.gethostname(), flush=True)
+    viralverify = os.path.join(hmm_db, "viralVerify", "bin", "viralverify")
+    viralverify_db = os.path.join(hmm_db, "nbc_hmms.hmm")
     cmd = [
-        "conda", "run", "-n", "viralverify", "viralverify", "-f",
-        unzipped_spades, "-o", viralverify_output_dir, "--hmm", hmm_db]
+        "conda", "run", "-n", "viralverify", viralverify, "-f",
+        unzipped_spades, "-o", viralverify_output_dir, "--hmm", viralverify_db]
     subprocess.run(cmd, check=True)
     return os.path.join(viralverify_output_dir)
 
@@ -361,15 +366,17 @@ def viraminer_app(unzipped_spades, viraminer_db, viraminer_output_dir):
     csv_file = os.path.join(viraminer_output_dir, "viraminer_input.csv")
     with open(csv_file, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["seq_id", "sequence", "label"])
+        #writer.writerow(["seq_id", "sequence", "label"])
         for record in SeqIO.parse(unzipped_spades, "fasta"):
             writer.writerow([record.id, str(record.seq), 0])
     output_txt = os.path.join(viraminer_output_dir, "viraminer_predictions.txt")
+    viraminer_script = os.path.join(viraminer_db, "predict_only.py")
+    viraminer_model = os.path.join(viraminer_db, "final_ViraMiner", "final_ViraMiner_beforeFT.hdf5")
     cmd = [
-        "conda", "run", "-n", "viraminer", "python2", "predict_only.py",
-        "--input_file", csv_file, "--model_path", viraminer_db]
-    with open(output_txt, "w") as out_file:
-        subprocess.run(cmd, stdout=outfile, check=True)
+        "conda", "run", "-n", "viraminer", "python", viraminer_script,
+        "--input_file", csv_file, "--model_path", viraminer_model]
+    with open(output_txt, "w") as f:
+        subprocess.run(cmd, stdout=f, check=True)
     return output_txt
 
 @python_app
@@ -381,7 +388,7 @@ def metaphinder_app(unzipped_spades, metaphinder_db, blast_path, metaphinder_out
         os.makedirs(metaphinder_output_dir)
     print("MetaPhinder Running on node:", socket.gethostname(), flush=True)
     cmd = [
-        "conda", "run", "-n", "metaphinder", "python", "MetaPhinder,py"
+        "conda", "run", "-n", "metaphinder", "python", "MetaPhinder.py"
         "-i", unzipped_spades, "-d", metaphinder_db, "-b", blast_path, 
         "-o", metaphinder_output_dir]
     subprocess.run(cmd, cwd=metaphinder_db, check=True)
@@ -457,22 +464,46 @@ class ViralDetectionAgent(Agent):
     @action
     async def run_marvel(self, unzipped_spades: str, marvel_output_dir: str, marvel_db: str) -> str:
         future = marvel_app(unzipped_spades, marvel_output_dir, marvel_db)
-        #marvel_result = await asyncio.to_thread(future.result)
-        marvel_result = future.result()
+        marvel_result = await asyncio.to_thread(future.result)
         return marvel_result
 
     @action
     async def run_virfinder(self, unzipped_spades: str, virfinder_output_dir: str) -> str:
         future = virfinder_app(unzipped_spades, virfinder_output_dir)
-        #virfinder_result = future.result()
         virfinder_result = await asyncio.to_thread(future.result)
         return virfinder_result
+    
+    @action
+    async def run_vibrant(self, unzipped_spades: str, vibrant_db: str, vibrant_output_dir: str) -> str:
+        future = vibrant_app(unzipped_spades, vibrant_db, vibrant_output_dir)
+        vibrant_result = await asyncio.to_thread(future.result)
+        return vibrant_result 
+
+    @action
+    async def run_viralverify(self, unzipped_spades: str, viralverify_output_dir: str, hmm_db: str) -> str:
+        future = viralverify_app(unzipped_spades, viralverify_output_dir, hmm_db)
+        viralverify_result = await asyncio.to_thread(future.result)
+        return viralverify_result
+
+    @action
+    async def run_viraminer(self, unzipped_spades: str, viraminer_db: str, viraminer_output_dir: str) -> str:
+        future = viraminer_app(unzipped_spades, viraminer_db, viraminer_output_dir)
+        viraminer_result = await asyncio.to_thread(future.result)
+        return viraminer_result
+
+    @action 
+    async def run_metaphinder(self, unzipped_spades: str, metaphinder_db: str, blast_path: str, metaphinder_output_dir: str) -> str:
+        future = metaphinder_app(unzipped_spades, metaphinder_db, blast_path, metaphinder_output_dir)
+        metaphinder_result = await asyncio.to_thread(future.result)
+        return metaphinder_result 
 
     @action
     async def run_tool(self, tool, unzipped_spades: str, genomad_output_dir: str, genomad_db: str, 
                        virsorter2_output_dir: str, dvf_output_dir: str, dvf_db: str,
                        work_dir: str, script_dir: str, marvel_output_dir: str, marvel_db: str,
-                       virfinder_output_dir: str) -> str:
+                       virfinder_output_dir: str, vibrant_db: str, vibrant_output_dir: str, 
+                       viralverify_output_dir, hmm_db, viraminer_db, viraminer_output_dir, metaphinder_db, 
+                       blast_path, metaphinder_output_dir) -> str:
         
         if tool == "GeNomad":
             result = await self.run_genomad(unzipped_spades, genomad_output_dir, genomad_db)
@@ -482,6 +513,14 @@ class ViralDetectionAgent(Agent):
             result = await self.run_marvel(unzipped_spades, marvel_output_dir, marvel_db)
         elif tool == "VirFinder":
             result = await self.run_virfinder(unzipped_spades, virfinder_output_dir)
+        elif tool == "VIBRANT":
+            result = await self.run_vibrant(unzipped_spades, vibrant_db, vibrant_output_dir)
+        elif tool == "viralVerify":
+            result = await self.run_viralverify(unzipped_spades, viralverify_output_dir, hmm_db)
+        elif tool == "ViraMiner":
+            result = await self.run_viraminer(unzipped_spades, viraminer_db, viraminer_output_dir)
+        elif tool == "MetaPhinder":
+            result = await self.run_metaphinder(unzipped_spades, metaphinder_db, blast_path, metaphinder_output_dir)
         else:
             result = await self.run_deepvirfinder(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir)
         return result
@@ -976,8 +1015,9 @@ class CoordinatorAgent(Agent):
         self.blast_handle = blast_handle
         self.config = make_config(config_path)
         self.selector = ToolSelector(alpha=0.6)
-        #self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder", "MARVEL", "VirFinder"])
-        self.current_tool = "VirFinder"
+        #self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder", "MARVEL", 
+        #"VirFinder", "VIBRANT", "viralVerify", "ViraMiner"])
+        self.current_tool = "ViraMiner"
         self.quality_ratios_history = []
         self.match_ratios_history = []
         self.shutdown = shutdown_event
@@ -1073,14 +1113,14 @@ class CoordinatorAgent(Agent):
 # Helper for per-sample pipeline
 async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, cluster_handle, first_sample_id):   
     # === Unzip ===
-    spades_gz = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta.gz")
-    unzipped_spades_path = os.path.join(config['SPADES_DIR'], sample_id, "contigs.fasta")
-    unzipped_spades = (await viral_handle.unzip_fasta(spades_gz, unzipped_spades_path))
+    #spades_gz = os.path.join(config['SPADES_DIR'], sample_id, "assembly.fa")
+    unzipped_spades = os.path.join(config['SPADES_DIR'], sample_id, "assembly.fa")
+    #unzipped_spades = (await viral_handle.unzip_fasta(spades_gz, unzipped_spades_path))
 
     # === Viral Detection ===
     genomad_output_dir = os.path.join(config['OUT_GENOMAD'], sample_id)
     genomad_db = config["GENOMAD_DB"]
-    virsorter2_output_dir = os.path.join(config["OUT_VIRSORT"], sample_id)
+    virsorter2_output_dir = os.path.join(config["OUT_VIRSORTER2"], sample_id)
     dvf_output_dir = os.path.join(config["OUT_DVF"], sample_id)
     dvf_db = config["DVF_DB"]
     work_dir = config["WORK_DIR"]
@@ -1088,10 +1128,21 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     marvel_output_dir = os.path.join(config["OUT_MARVEL"], sample_id)
     marvel_db = os.path.join(config["MARVEL_DB"])
     virfinder_output_dir = os.path.join(config["OUT_VIRFINDER"], sample_id)
+    vibrant_db = os.path.join(config["VIBRANT_DB"])
+    vibrant_output_dir = os.path.join(config["OUT_VIBRANT"], sample_id)
+    viralverify_output_dir = os.path.join(config["OUT_VIRALVERIFY"], sample_id)
+    hmm_db = os.path.join(config["HMM_DB"])
+    viraminer_db = os.path.join(config["VIRAMINER_DB"])
+    viraminer_output_dir = os.path.join(config["OUT_VIRAMINER"], sample_id)
+    metaphinder_db = 1
+    blast_path = 2
+    metaphinder_output_dir = 3
     start_time = datetime.now()  
     viral_result = await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, 
             genomad_db, virsorter2_output_dir,dvf_output_dir, dvf_db, work_dir, script_dir, 
-            marvel_output_dir, marvel_db, virfinder_output_dir)
+            marvel_output_dir, marvel_db, virfinder_output_dir, vibrant_db, vibrant_output_dir, 
+            viralverify_output_dir, hmm_db, viraminer_db, viraminer_output_dir, metaphinder_db, 
+            blast_path, metaphinder_output_dir)
     end_time = datetime.now()
     elapsed = end_time - start_time
     print(f"{tool} started at {start_time} and ended at {end_time} - duration: {elapsed}", flush=True)    

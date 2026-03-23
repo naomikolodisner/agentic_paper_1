@@ -9,6 +9,7 @@ XDISK = Path("/xdisk/gwatts")
 PROJECT_ROOT = XDISK / "kolodisner" / "agentic_paper_1"
 RESULTS_ROOT = PROJECT_ROOT / "results"
 DB_ROOT = Path("/groups/gwatts/databases")
+TOOL_ROOT = Path("/groups/gwatts/tools")
 
 ############################
 # Logs & scripts
@@ -21,10 +22,9 @@ LOG_DIR = PROJECT_ROOT / "logs"
 # Assembly inputs
 ############################
 
-XFILE = "xac"
-XFILE2 = "xad"
+XFILE = "xad"
 XFILE_DIR = PROJECT_ROOT
-SPADES_DIR = PROJECT_ROOT / "out_spades"
+SPADES_DIR = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "assemblies"
 
 ############################
 # Viral detection tools
@@ -36,8 +36,8 @@ CHECKV_PARSER = PROJECT_ROOT / "CheckV_parser.R"
 PARSE_LENGTH = 5000
 
 # VirSorter2
-OUT_VIRSORT = RESULTS_ROOT / "01_viral_detection" / "01A_virsorter2"
-OUT_CHECKV_VIRSORT = OUT_CHECKV / "02A_virsorter2"
+OUT_VIRSORTER2 = RESULTS_ROOT / "01_viral_detection" / "01A_virsorter2"
+OUT_CHECKV_VIRSORTER2 = OUT_CHECKV / "02A_virsorter2"
 
 # DeepVirFinder
 OUT_DVF = RESULTS_ROOT / "01_viral_detection" / "01B_dvf"
@@ -54,9 +54,38 @@ OUT_MARVEL = RESULTS_ROOT / "01_viral_detection" / "01D_marvel"
 MARVEL_DB = DB_ROOT / "MARVEL"
 OUT_CHECKV_MARVEL = OUT_CHECKV / "02D_marvel"
 
-#VirFinder
+# VirFinder
 OUT_VIRFINDER = RESULTS_ROOT / "01_viral_detection" / "01E_virfinder"
 OUT_CHECKV_VIRFINDER = OUT_CHECKV / "02E_virfinder"
+
+# VIBRANT
+OUT_VIBRANT = RESULTS_ROOT / "01_viral_detection" / "01F_vibrant"
+VIBRANT_DB = DB_ROOT / "VIBRANT" 
+OUT_CHECKV_VIBRANT = OUT_CHECKV / "02F_vibrant"
+
+# viralVerify
+OUT_VIRALVERIFY = RESULTS_ROOT / "01_viral_detection" / "01G_viralverify"
+HMM_DB = TOOL_ROOT / "viralVerify" 
+OUT_CHECKV_VIRALVERIFY = OUT_CHECKV / "02G_viralverify"
+
+# ViraMiner
+OUT_VIRAMINER = RESULTS_ROOT / "01_viral_detection" / "01H_viraminer"
+VIRAMINER_DB = TOOL_ROOT / "ViraMiner" 
+OUT_CHECKV_VIRAMINER = OUT_CHECKV / "02H_viraminer"
+
+# MetaPhinder 
+OUT_METAPHINDER = RESULTS_ROOT / "01_viral_detection" / "01I_metaphinder"
+BLAST_PATH = "/groups/gwatts/miniconda3/envs/metaphinder/bin/"
+METAPHINDER_DB = TOOL_ROOT / "MetaPhinder"
+OUT_CHECKV_METAPHINDER = OUT_CHECKV / "02I_metaphinder"
+
+# Seeker 
+OUT_SEEKER = RESULTS_ROOT / "01_viral_detection" / "01J_seeker"
+OUT_CHECKV_SEEKER = OUT_CHECKV / "02J_seeker"
+
+# VirSorter
+OUT_VIRSORTER = RESULTS_ROOT / "01_viral_detection" / "01K_visorter"
+OUT_CHECKV_VIRSORTER = OUT_CHECKV / "02K_virsorter"
 
 
 ############################
