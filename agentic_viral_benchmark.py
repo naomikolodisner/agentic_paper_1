@@ -368,10 +368,20 @@ def viraminer_app(unzipped_spades, viraminer_db, viraminer_output_dir):
         writer = csv.writer(csvfile)
         #writer.writerow(["seq_id", "sequence", "label"])
         for record in SeqIO.parse(unzipped_spades, "fasta"):
-            writer.writerow([record.id, str(record.seq), 0])
+            seq = str(record.seq).strip()
+            # break into 300bp chunks
+            for i in range(0, len(seq), 300):
+                chunk = seq[i:i+300]
+                # only keep full-length chunks
+                if len(chunk) == 300:
+                    writer.writerow([record.id + "_chunk" + str(i), chunk, 0])
+        # Add one dummy positive example to avoid ROC AUC crash
+        writer.writerow(["dummy_seq", "A"*300, 1])
     output_txt = os.path.join(viraminer_output_dir, "viraminer_predictions.txt")
     viraminer_script = os.path.join(viraminer_db, "predict_only.py")
     viraminer_model = os.path.join(viraminer_db, "final_ViraMiner", "final_ViraMiner_beforeFT.hdf5")
+    env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = ""
     cmd = [
         "conda", "run", "-n", "viraminer", "python", viraminer_script,
         "--input_file", csv_file, "--model_path", viraminer_model]
@@ -388,7 +398,7 @@ def metaphinder_app(unzipped_spades, metaphinder_db, blast_path, metaphinder_out
         os.makedirs(metaphinder_output_dir)
     print("MetaPhinder Running on node:", socket.gethostname(), flush=True)
     cmd = [
-        "conda", "run", "-n", "metaphinder", "python", "MetaPhinder.py"
+        "conda", "run", "-n", "metaphinder", "python", "MetaPhinder.py",
         "-i", unzipped_spades, "-d", metaphinder_db, "-b", blast_path, 
         "-o", metaphinder_output_dir]
     subprocess.run(cmd, cwd=metaphinder_db, check=True)
@@ -498,12 +508,25 @@ class ViralDetectionAgent(Agent):
         return metaphinder_result 
 
     @action
+    async def run_seeker(self, unzipped_spades: str, seeker_output_dir: str) -> str:
+        future = seeker_app(unzipped_spades, seeker_output_dir)
+        seeker_result = await asyncio.to_thread(future.result)
+        return seeker_result 
+    
+    @action
+    async def run_virsorter(self, unzipped_spades: str, virsorter_db: str, visorter_output_dir: str) -> str:
+        future = virsorter_app(unzipped_spades, virsorter_db, virsorter_output_dir)
+        virsorter_result = await asyncio.to_thread(future.result)
+        return virsorter_result
+
+    @action
     async def run_tool(self, tool, unzipped_spades: str, genomad_output_dir: str, genomad_db: str, 
                        virsorter2_output_dir: str, dvf_output_dir: str, dvf_db: str,
                        work_dir: str, script_dir: str, marvel_output_dir: str, marvel_db: str,
                        virfinder_output_dir: str, vibrant_db: str, vibrant_output_dir: str, 
                        viralverify_output_dir, hmm_db, viraminer_db, viraminer_output_dir, metaphinder_db, 
-                       blast_path, metaphinder_output_dir) -> str:
+                       blast_path, metaphinder_output_dir, seeker_output_dir, virsorter_db, 
+                       virsorter_output_dir) -> str:
         
         if tool == "GeNomad":
             result = await self.run_genomad(unzipped_spades, genomad_output_dir, genomad_db)
@@ -521,6 +544,10 @@ class ViralDetectionAgent(Agent):
             result = await self.run_viraminer(unzipped_spades, viraminer_db, viraminer_output_dir)
         elif tool == "MetaPhinder":
             result = await self.run_metaphinder(unzipped_spades, metaphinder_db, blast_path, metaphinder_output_dir)
+        elif tool == "Seeker":
+            result = await self.run_seeker(unzipped_spades, seeker_output_dir)
+        elif tool == "VirSorter":
+            result = await self.run_virsorter(unzipped_spades, virsorter_db, virsorter_output_dir)
         else:
             result = await self.run_deepvirfinder(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir)
         return result
@@ -1016,8 +1043,8 @@ class CoordinatorAgent(Agent):
         self.config = make_config(config_path)
         self.selector = ToolSelector(alpha=0.6)
         #self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder", "MARVEL", 
-        #"VirFinder", "VIBRANT", "viralVerify", "ViraMiner"])
-        self.current_tool = "ViraMiner"
+        #"VirFinder", "VIBRANT", "viralVerify", "ViraMiner", "MetaPhinder", "Seeker", "VirSorter"])
+        self.current_tool = "MetaPhinder"
         self.quality_ratios_history = []
         self.match_ratios_history = []
         self.shutdown = shutdown_event
@@ -1134,15 +1161,19 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     hmm_db = os.path.join(config["HMM_DB"])
     viraminer_db = os.path.join(config["VIRAMINER_DB"])
     viraminer_output_dir = os.path.join(config["OUT_VIRAMINER"], sample_id)
-    metaphinder_db = 1
-    blast_path = 2
-    metaphinder_output_dir = 3
+    metaphinder_db = config["METAPHINDER_DB"]
+    blast_path = config["BLAST_PATH"]
+    metaphinder_output_dir = os.path.join(config["OUT_METAPHINDER"], sample_id)
+    seeker_output_dir = os.path.join(config["OUT_SEEKER"], sample_id)
+    virsorter_db = config["VIRSORTER_DB"]
+    virsorter_output_dir = os.path.join(config["OUT_VIRSORTER"], sample_id)
     start_time = datetime.now()  
     viral_result = await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, 
             genomad_db, virsorter2_output_dir,dvf_output_dir, dvf_db, work_dir, script_dir, 
             marvel_output_dir, marvel_db, virfinder_output_dir, vibrant_db, vibrant_output_dir, 
             viralverify_output_dir, hmm_db, viraminer_db, viraminer_output_dir, metaphinder_db, 
-            blast_path, metaphinder_output_dir)
+            blast_path, metaphinder_output_dir, seeker_output_dir, virsorter_db, 
+            virsorter_output_dir)
     end_time = datetime.now()
     elapsed = end_time - start_time
     print(f"{tool} started at {start_time} and ended at {end_time} - duration: {elapsed}", flush=True)    

@@ -75,7 +75,7 @@ OUT_CHECKV_VIRAMINER = OUT_CHECKV / "02H_viraminer"
 
 # MetaPhinder 
 OUT_METAPHINDER = RESULTS_ROOT / "01_viral_detection" / "01I_metaphinder"
-BLAST_PATH = "/groups/gwatts/miniconda3/envs/metaphinder/bin/"
+BLAST_PATH = "/home/u3/kolodisner/.conda/envs/blast"
 METAPHINDER_DB = TOOL_ROOT / "MetaPhinder"
 OUT_CHECKV_METAPHINDER = OUT_CHECKV / "02I_metaphinder"
 
@@ -86,7 +86,7 @@ OUT_CHECKV_SEEKER = OUT_CHECKV / "02J_seeker"
 # VirSorter
 OUT_VIRSORTER = RESULTS_ROOT / "01_viral_detection" / "01K_visorter"
 OUT_CHECKV_VIRSORTER = OUT_CHECKV / "02K_virsorter"
-
+VIRSORTER_DB = 1
 
 ############################
 # Dereplication & clustering
