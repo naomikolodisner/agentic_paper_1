@@ -397,9 +397,11 @@ def metaphinder_app(unzipped_spades, metaphinder_db, blast_path, metaphinder_out
     if not os.path.exists(metaphinder_output_dir):
         os.makedirs(metaphinder_output_dir)
     print("MetaPhinder Running on node:", socket.gethostname(), flush=True)
+    metaphinder_script = os.path.join(metaphinder_db, "MetaPhinder.py")
+    metaphinder_data = os.path.join(metaphinder_db, "database", "ALL_140821_hr")
     cmd = [
-        "conda", "run", "-n", "metaphinder", "python", "MetaPhinder.py",
-        "-i", unzipped_spades, "-d", metaphinder_db, "-b", blast_path, 
+        "conda", "run", "-n", "metaphinder", "python", metaphinder_script,
+        "-i", unzipped_spades, "-d", metaphinder_data, "-b", blast_path, 
         "-o", metaphinder_output_dir]
     subprocess.run(cmd, cwd=metaphinder_db, check=True)
     return os.path.join(metaphinder_output_dir, "contigs_summary", "contigs_virus.fna")
@@ -409,6 +411,7 @@ def seeker_app(unzipped_spades, seeker_output_dir):
     import subprocess
     import os
     import socket
+    import textwrap
     if not os.path.exists(seeker_output_dir):
         os.makedirs(seeker_output_dir)
     print("Seeker Running on node:", socket.gethostname(), flush=True)
@@ -416,7 +419,7 @@ def seeker_app(unzipped_spades, seeker_output_dir):
     out_fasta = os.path.join(seeker_output_dir, "seeker_phage_contigs.fa")
     seeker_script = textwrap.dedent(f"""
         from seeker import SeekerFasta
-        seeker_fasta = SeekerFasta("{contigs_fasta}")
+        seeker_fasta = SeekerFasta("{unzipped_spades}")
         seeker_fasta.meta2fasta(
             out_fasta_path="{out_fasta}",
             threshold={threshold}
@@ -514,7 +517,7 @@ class ViralDetectionAgent(Agent):
         return seeker_result 
     
     @action
-    async def run_virsorter(self, unzipped_spades: str, virsorter_db: str, visorter_output_dir: str) -> str:
+    async def run_virsorter(self, unzipped_spades: str, virsorter_db: str, virsorter_output_dir: str) -> str:
         future = virsorter_app(unzipped_spades, virsorter_db, virsorter_output_dir)
         virsorter_result = await asyncio.to_thread(future.result)
         return virsorter_result
@@ -657,7 +660,7 @@ def dereplicate_app(
     os.makedirs(cluster_dir, exist_ok=True)
 
     cmd_mmseqs_derep = [
-        "conda", "run", "-n", "mmseqs2_env",
+        "conda", "run", "-n", "mmseqs2",
         "mmseqs", "easy-cluster", subset_spades, cluster_res_derep, tmp_dir_derep,
         "--min-seq-id", "0.99", "-c", "0.90", "--cov-mode", "1"
     ]
@@ -701,7 +704,7 @@ def cluster_app(
 
     os.makedirs(out_cluster, exist_ok=True)
     cmd_mmseqs_cluster = [
-        "conda", "run", "-n", "mmseqs2_env",
+        "conda", "run", "-n", "mmseqs2",
         "mmseqs", "easy-cluster", derep_fasta, cluster_res_cluster,
         tmp_dir_cluster, "--min-seq-id", "0.95", "-c", "0.75", "--cov-mode", "1"
     ]
@@ -1044,7 +1047,7 @@ class CoordinatorAgent(Agent):
         self.selector = ToolSelector(alpha=0.6)
         #self.current_tool = random.choice(["GeNomad", "VirSorter2", "DeepVirFinder", "MARVEL", 
         #"VirFinder", "VIBRANT", "viralVerify", "ViraMiner", "MetaPhinder", "Seeker", "VirSorter"])
-        self.current_tool = "MetaPhinder"
+        self.current_tool = "VirSorter"
         self.quality_ratios_history = []
         self.match_ratios_history = []
         self.shutdown = shutdown_event
