@@ -431,7 +431,7 @@ def seeker_app(unzipped_spades, seeker_output_dir):
     return out_fasta
 
 @python_app
-def virsorter_app(unzipped_spades, virsorter_db, virsorter_output_dir):
+def virsorter_app(unzipped_spades, virsorter_db, virsorter_script, virsorter_output_dir):
     import subprocess
     import os
     import socket
@@ -440,7 +440,7 @@ def virsorter_app(unzipped_spades, virsorter_db, virsorter_output_dir):
     print("VirSorter Running on node:", socket.gethostname(), flush=True)
     threads=4
     cmd = [
-        "conda", "run", "-n", "virsorter", "wrapper_phage_contigs_sorter_iPlant.pl",
+        "conda", "run", "-n", "virsorter", virsorter_script,
         "-f", unzipped_spades, "--db", "1", "--wdir", virsorter_output_dir, "--ncpu",
         str(threads), "--data-dir", virsorter_db]
     subprocess.run(cmd, check=True)
@@ -517,8 +517,8 @@ class ViralDetectionAgent(Agent):
         return seeker_result 
     
     @action
-    async def run_virsorter(self, unzipped_spades: str, virsorter_db: str, virsorter_output_dir: str) -> str:
-        future = virsorter_app(unzipped_spades, virsorter_db, virsorter_output_dir)
+    async def run_virsorter(self, unzipped_spades: str, virsorter_db: str, virsorter_script: str, virsorter_output_dir: str) -> str:
+        future = virsorter_app(unzipped_spades, virsorter_db, virsorter_script, virsorter_output_dir)
         virsorter_result = await asyncio.to_thread(future.result)
         return virsorter_result
 
@@ -528,7 +528,7 @@ class ViralDetectionAgent(Agent):
                        work_dir: str, script_dir: str, marvel_output_dir: str, marvel_db: str,
                        virfinder_output_dir: str, vibrant_db: str, vibrant_output_dir: str, 
                        viralverify_output_dir, hmm_db, viraminer_db, viraminer_output_dir, metaphinder_db, 
-                       blast_path, metaphinder_output_dir, seeker_output_dir, virsorter_db, 
+                       blast_path, metaphinder_output_dir, seeker_output_dir, virsorter_db, virsorter_script, 
                        virsorter_output_dir) -> str:
         
         if tool == "GeNomad":
@@ -550,7 +550,7 @@ class ViralDetectionAgent(Agent):
         elif tool == "Seeker":
             result = await self.run_seeker(unzipped_spades, seeker_output_dir)
         elif tool == "VirSorter":
-            result = await self.run_virsorter(unzipped_spades, virsorter_db, virsorter_output_dir)
+            result = await self.run_virsorter(unzipped_spades, virsorter_db, virsorter_script, virsorter_output_dir)
         else:
             result = await self.run_deepvirfinder(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir)
         return result
@@ -1169,13 +1169,14 @@ async def process_sample(sample_id, config, tool, viral_handle, checkv_handle, c
     metaphinder_output_dir = os.path.join(config["OUT_METAPHINDER"], sample_id)
     seeker_output_dir = os.path.join(config["OUT_SEEKER"], sample_id)
     virsorter_db = config["VIRSORTER_DB"]
+    virsorter_script = config["VIRSORTER_SCRIPT"]
     virsorter_output_dir = os.path.join(config["OUT_VIRSORTER"], sample_id)
     start_time = datetime.now()  
     viral_result = await viral_handle.run_tool(tool, unzipped_spades, genomad_output_dir, 
             genomad_db, virsorter2_output_dir,dvf_output_dir, dvf_db, work_dir, script_dir, 
             marvel_output_dir, marvel_db, virfinder_output_dir, vibrant_db, vibrant_output_dir, 
             viralverify_output_dir, hmm_db, viraminer_db, viraminer_output_dir, metaphinder_db, 
-            blast_path, metaphinder_output_dir, seeker_output_dir, virsorter_db, 
+            blast_path, metaphinder_output_dir, seeker_output_dir, virsorter_db, virsorter_script, 
             virsorter_output_dir)
     end_time = datetime.now()
     elapsed = end_time - start_time

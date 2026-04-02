@@ -87,6 +87,7 @@ OUT_CHECKV_SEEKER = OUT_CHECKV / "02J_seeker"
 OUT_VIRSORTER = RESULTS_ROOT / "01_viral_detection" / "01K_visorter"
 OUT_CHECKV_VIRSORTER = OUT_CHECKV / "02K_virsorter"
 VIRSORTER_DB = DB_ROOT / "virsorter-data"
+VIRSORTER_SCRIPT = TOOL_ROOT / "VirSorter" / "wrapper_phage_contigs_sorter_iPlant.pl" 
 
 ############################
 # Dereplication & clustering

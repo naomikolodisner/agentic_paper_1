@@ -5,7 +5,7 @@
 import random
 import subprocess
 from pathlib import Path
-
+from Bio import SeqIO
 import pandas
 
 # This is the number of samples we are generating
@@ -16,10 +16,13 @@ random.seed(41)
 
 # This is the list of reference genomes we can choose from
 references_meta = pandas.read_csv(
-    '../strainge_db/ecoli_chrom_db/references_meta.tsv', sep='\t', comment='#',
-    index_col=0, header=None, names=['ref_id', 'path', 'accesson'])
+    '/groups/gwatts/databases/AVrC/database_csv/AvRCv1.Merged_ViralDesc.csv', sep=',', comment='#')
+contig_ids = list(references_meta['contig_id'])
 
-ref_outdir = Path("samples")
+fasta_file = "/groups/gwatts/databases/AVrC/AVrC_allsequences.fasta"
+fasta_index = SeqIO.index(fasta_file, "fasta")
+
+ref_outdir = Path("/xdisk/gwatts/kolodisner/agentic_paper_1/dataset_creation/samples")
 
 sample_types = {
     'single': 1,
@@ -35,21 +38,16 @@ for stype, num_refs in sample_types.items():
         out_dir = ref_outdir / f"{stype}/sample{i+1}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        refs = random.sample(list(references_meta.index), num_refs)
-        uncompressed_refs = []
+        refs = random.sample(contig_ids, num_refs)
 
-        for ref in refs:
-            path = Path(references_meta.loc[ref, 'path'])
-            uncompressed_path = (path.parent / "uncompressed" /
-                                 path.with_suffix("").name)  # remove .gz
-            if not uncompressed_path.is_file():
-                uncompressed_path.parent.mkdir(exist_ok=True, parents=True)
+        with open(out_dir / "refs_log.txt", "w") as log_f:
+            for ref in refs:
+                log_f.write(f"{ref}\n")
 
-                subprocess.run(f'gunzip -c "{path}" > "{uncompressed_path}"',
-                               shell=True, check=True)
-
-            uncompressed_refs.append([ref, uncompressed_path])
-
-        with (out_dir / "refs.txt").open("w") as f:
-            for name, path in uncompressed_refs:
-                print(name, path, sep='\t', file=f)
+        out_fasta = out_dir / "contigs.fasta"
+        with open(out_fasta, "w") as f:
+            for ref in refs:
+                if ref in fasta_index:
+                    SeqIO.write(fasta_index[ref], f, "fasta")
+                else:
+                    print(f"Warning: {ref} not found in AVrC_allsequences.fasta")
