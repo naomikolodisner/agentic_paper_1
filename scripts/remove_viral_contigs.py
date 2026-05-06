@@ -56,10 +56,12 @@ for sample in os.listdir(spades_dir):
     # get viral IDs
     with open_fasta(viral_fasta) as vf:
         viral_ids = set(record.id for record in SeqIO.parse(vf, "fasta"))
-
     logging.info(f"{sample}: {len(viral_ids)} viral contigs")
 
-    output_file = os.path.join(output_base, f"{sample}_no_virus.fasta")
+    # give each sample its own directory with contigs.fasta inside
+    sample_output_dir = os.path.join(output_base, sample)
+    os.makedirs(sample_output_dir, exist_ok=True)
+    output_file = os.path.join(sample_output_dir, "contigs.fasta")
 
     kept = 0
     removed = 0

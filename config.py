@@ -25,6 +25,7 @@ LOG_DIR = PROJECT_ROOT / "logs"
 XFILE = "xad"
 XFILE_DIR = PROJECT_ROOT
 SPADES_DIR = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "assemblies"
+CONTIG_IDENTITIES = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "contig_identities.csv"
 
 ############################
 # Viral detection tools

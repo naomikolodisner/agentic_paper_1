@@ -11,29 +11,36 @@ import argparse
 import tempfile
 import subprocess
 from pathlib import Path
-
+import os
 from Bio import SeqIO
 from sh import seqtk
 
-from strainge_benchmarks import open_compressed
+#from strainge_benchmarks import open_compressed
+import gzip
+
+def open_compressed(file):
+    if str(file).endswith(".gz"):
+        return gzip.open(file, "rt")
+    return open(file, "r")
 
 logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-
 SHUFFLE_SHELL = """
+export MEMORY=40
+export TMPDIR="{tmpdir}"
+
 paste  <(cat {r1} "{b1}") \\
        <(cat {r2} "{b2}") \\
     | paste - - - - \\
-    | shuf \\
-    | awk -F'\\t' '{{OFS="\\n"; print $1,$3,$5,$7 > "{out_prefix}.1.fq";\
+    | /home/u3/kolodisner/terashuf/terashuf \\
+    | awk -F'\\t' '{{OFS="\\n"; print $1,$3,$5,$7 > "{out_prefix}.1.fq";\\
         print $2,$4,$6,$8 > "{out_prefix}.2.fq"}}'
 
 gzip "{out_prefix}.1.fq"
 gzip "{out_prefix}.2.fq"
 """
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -103,13 +110,17 @@ def main():
 
     logger.info("Counting number of reads in input sample...")
     with open_compressed(args.R1) as f:
-        p = subprocess.run(f'grep "^@" | wc -l',
-                           stdin=f, stdout=subprocess.PIPE,
-                           shell=True, executable='/bin/bash')
+        #p = subprocess.run(f'grep "^@" | wc -l',
+        #                   stdin=f, stdout=subprocess.PIPE,
+        #                   shell=True, executable='/bin/bash')
+        p = subprocess.run(['awk', 'NR%4==1{c++} END{print c}', str(args.R1)], stdout=subprocess.PIPE)
+
+    #num_reads_in = int(p.stdout)
+    #reads_from_bg = total_read_pairs - num_reads_in
 
     num_reads_in = int(p.stdout)
-    reads_from_bg = total_read_pairs - num_reads_in
-
+    reads_from_bg = max(0, total_read_pairs - num_reads_in)
+    
     logger.info("Total number of read pairs required: %d", total_read_pairs)
     logger.info("Number of read pairs in input sample: %d", num_reads_in)
     logger.info("Number of read pairs from background sample: %d",
@@ -132,11 +143,11 @@ def main():
 
     logger.info("Shuffling reads and gzipping output files...")
     subprocess.run(
-        SHUFFLE_SHELL.format(b1=b1.name, b2=b2.name, r1=r1, r2=r2,
-                             out_prefix=args.output_prefix),
-        shell=True, executable='/bin/bash'
+    SHUFFLE_SHELL.format(b1=b1.name, b2=b2.name, r1=r1, r2=r2,
+                         out_prefix=args.output_prefix,
+                         tmpdir=os.environ.get('TMPDIR', '/tmp')),
+    shell=True, executable='/bin/bash'
     )
-
     b1.close()
     b2.close()
 
