@@ -2,10 +2,11 @@
 #SBATCH --account=gwatts
 #SBATCH --partition=standard
 #SBATCH --job-name=create_samples_array
-#SBATCH --output=slurm_logs/slurm-%A_%a.out
-#SBATCH --error=slurm_logs/slurm-%A_%a.err
+#SBATCH --output=/xdisk/gwatts/kolodisner/agentic_paper_1/logs/slurm/slurm-%A_%a.out
+#SBATCH --error=/xdisk/gwatts/kolodisner/agentic_paper_1/logs/slurm/slurm-%A_%a.err
 #SBATCH --time=20:00:00
 #SBATCH --mem=128G
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --array=0-14%3
 
@@ -20,12 +21,12 @@ echo "Running on node $(hostname)"
 #echo "Conda activated"
 
 GEN_TITRATION="/xdisk/gwatts/kolodisner/agentic_paper_1/scripts/gen_titration_sample.py"
-SAMPLES_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/dataset_creation/samples/single"
-BACKGROUND_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/dataset_creation/no_virus_contigs"
+SAMPLES_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/data/spike_in_samples/single"
+BACKGROUND_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/data/no_virus_contigs"
 ART_BIN="/home/u3/kolodisner/.conda/envs/test_env/bin/art_illumina"
 PYTHON_BIN="$HOME/.conda/envs/test_env/bin/python"
 
-mkdir -p sample_logs tmp slurm_logs
+mkdir -p /xdisk/gwatts/kolodisner/agentic_paper_1/logs/slurm /xdisk/gwatts/kolodisner/agentic_paper_1/logs/sample
 
 # Get list of sample directories
 mapfile -t SAMPLE_DIRS < <(find "$SAMPLES_DIR" -mindepth 1 -maxdepth 1 -type d | sort)
@@ -38,7 +39,7 @@ fi
 
 sample_dir="${SAMPLE_DIRS[$SLURM_ARRAY_TASK_ID]}"
 sample_name=$(basename "$sample_dir")
-log_file="sample_logs/${sample_name}.log"
+log_file="/xdisk/gwatts/kolodisner/agentic_paper_1/logs/sample/${sample_name}.log"
 : > "$log_file"   
 
 echo "Processing ${sample_name}" | tee "$log_file"

@@ -20,8 +20,9 @@ export LOG_DIR=$PROJECT_ROOT/logs
 
 export XFILE=xac
 export XFILE2=xad
-export XFILE_DIR=$PROJECT_ROOT
-export SPADES_DIR=$PROJECT_ROOT/out_spades
+export XFILE_DIR=$PROJECT_ROOT/data/sample_lists
+export SPADES_DIR=$PROJECT_ROOT/data/set3_simulated_metagenomes/assemblies
+export BACKGROUND_ASSEMBLIES=$PROJECT_ROOT/data/background_assemblies
 
 ############################
 # Viral detection tools

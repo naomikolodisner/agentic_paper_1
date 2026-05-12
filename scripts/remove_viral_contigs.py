@@ -6,7 +6,7 @@ from Bio import SeqIO
 # directories
 genomad_dir = "/xdisk/gwatts/kolodisner/fmt_viruses/viral_detection_pipeline/results/03A_genomad"
 spades_dir = "/xdisk/gwatts/kolodisner/fmt_viruses/out_spades"
-output_base = "/xdisk/gwatts/kolodisner/agentic_paper_1/dataset_creation/no_virus_contigs"
+output_base = "/xdisk/gwatts/kolodisner/agentic_paper_1/data/no_virus_contigs"
 
 os.makedirs(output_base, exist_ok=True)
 

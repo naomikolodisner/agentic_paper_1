@@ -4,29 +4,35 @@ F1, precision, and recall evaluation for viral detection results.
 Ground truth comes from contig_identities.csv (superkingdom == "Viruses").
 Predicted contigs come from a tool's output FASTA file.
 
-IMPORTANT — profile/model filtering:
-    The same contig ID (e.g. k141_0) appears across multiple profile+model
-    combinations in contig_identities.csv and may have a different taxonomic
-    assignment in each. Always pass --profile and --model when you know which
-    simulated community a sample came from. Without them, the viral ID set is
-    the union across ALL profiles/models — precision is still valid, but recall
-    will be deflated because the FN denominator is artificially large.
+Profile/model filtering is required for accurate recall. The same contig ID
+(e.g. k141_0) appears in every assembly because SPAdes reuses sequential
+numbering. Without filtering, the FN denominator includes viral contigs from
+all 15 simulated communities — but the tool only ran on one, so it can never
+find the others. Filter to the specific profile+model so the denominator
+contains only the viral contigs that actually existed in the assembly the tool
+analyzed.
+
+The sample directory name encodes both fields: SRR4831655_hiseq
+  → profile = "SRR4831655", model = "hiseq"
 """
 
 import csv
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
+
 
 # --------------------------------------------------------------------------- #
 # Thresholds
 # --------------------------------------------------------------------------- #
 
-F1_GOOD = 0.70      # >= this is a "good" result
-F1_TERRIBLE = 0.50  # <  this gets dropped from exploration
+F1_GOOD     = 0.70   # >= this is a "good" result
+F1_TERRIBLE = 0.50   # <  this gets dropped from exploration
 
 
 # --------------------------------------------------------------------------- #
@@ -82,11 +88,10 @@ def load_viral_contig_ids(
 ) -> set:
     """
     Return the set of contig IDs whose superkingdom is 'Viruses'.
-    Optionally filter to a specific profile (e.g. 'SRR5720320') and/or
-    model (e.g. 'miseq', 'hiseq', 'novaseq').
 
-    Loading once and passing the result set to evaluate() is preferred when
-    scoring many samples — the CSV is ~1.1 M rows.
+    Always pass profile and model (e.g. 'SRR4831655', 'hiseq') so that only
+    the contigs belonging to that specific assembly are in the denominator.
+    The CSV is ~1.1 M rows; load once and reuse the returned set across calls.
     """
     viral_ids = set()
     with open(ground_truth_csv, newline="") as f:
@@ -109,11 +114,9 @@ def parse_fasta_ids(fasta_path: Path) -> set:
     """
     Extract contig IDs from a viral detection tool's output FASTA.
 
-    Handles the two common header styles:
-      >k141_2191, av_score: 0.605       (Seeker — comma then score)
-      >k141_18325 flag=1 multi=4 len=562 (SPAdes-style — space then metadata)
-
-    The contig ID is the first whitespace/comma-delimited token after '>'.
+    Handles both common header styles:
+      >k141_2191, av_score: 0.605        (Seeker)
+      >k141_18325 flag=1 multi=4 len=562 (SPAdes-style)
     """
     ids = set()
     with open(fasta_path) as f:
@@ -128,33 +131,22 @@ def parse_fasta_ids(fasta_path: Path) -> set:
 # Metric computation
 # --------------------------------------------------------------------------- #
 
-def compute_metrics(
-    predicted: set,
-    ground_truth_viral: set,
-) -> tuple:
-    """
-    Return (precision, recall, f1, tp, fp, fn).
-
-    - TP: predicted as viral AND truly viral
-    - FP: predicted as viral BUT not viral
-    - FN: truly viral BUT not predicted
-    """
+def compute_metrics(predicted: set, ground_truth_viral: set) -> tuple:
+    """Return (precision, recall, f1, tp, fp, fn)."""
     tp = len(predicted & ground_truth_viral)
     fp = len(predicted - ground_truth_viral)
     fn = len(ground_truth_viral - predicted)
-
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1        = (
         2 * precision * recall / (precision + recall)
-        if (precision + recall) > 0
-        else 0.0
+        if (precision + recall) > 0 else 0.0
     )
     return precision, recall, f1, tp, fp, fn
 
 
 # --------------------------------------------------------------------------- #
-# Public evaluation API
+# Public API
 # --------------------------------------------------------------------------- #
 
 def evaluate(
@@ -168,35 +160,19 @@ def evaluate(
     model: str = "",
 ) -> EvalResult:
     """
-    Evaluate a single tool FASTA output against a pre-loaded ground truth set.
+    Evaluate one tool FASTA against a pre-loaded ground truth set.
 
-    Args:
-        fasta_path:          Path to tool output FASTA (predicted viral contigs).
-        ground_truth_viral:  Set of contig IDs known to be viral (from
-                             load_viral_contig_ids()).
-        tool:                Tool name (e.g. 'seeker', 'virsorter2').
-        sample_id:           Sample identifier string.
-        coverage:            Coverage level used (e.g. '1x'), for bookkeeping.
-        sample_type:         Sample composition type (e.g. 'single', 'equal2').
-        profile:             SRA profile the sample came from, for bookkeeping.
-        model:               Error model, for bookkeeping.
-
-    Returns:
-        EvalResult with precision, recall, F1, and raw TP/FP/FN counts.
+    Prefer pre-loading ground_truth_viral with load_viral_contig_ids() and
+    reusing it across calls rather than reloading the CSV each time.
     """
     predicted = parse_fasta_ids(fasta_path)
     precision, recall, f1, tp, fp, fn = compute_metrics(predicted, ground_truth_viral)
     return EvalResult(
-        tool=tool,
-        sample_id=sample_id,
-        coverage=coverage,
-        sample_type=sample_type,
-        profile=profile,
-        model=model,
+        tool=tool, sample_id=sample_id,
+        coverage=coverage, sample_type=sample_type,
+        profile=profile, model=model,
         tp=tp, fp=fp, fn=fn,
-        precision=precision,
-        recall=recall,
-        f1=f1,
+        precision=precision, recall=recall, f1=f1,
     )
 
 
@@ -205,17 +181,12 @@ def evaluate_batch(
     ground_truth_csv: Path = config.CONTIG_IDENTITIES,
 ) -> list[EvalResult]:
     """
-    Evaluate multiple (fasta_path, profile, model, tool, ...) dicts in one call.
+    Evaluate multiple samples, reading the ground truth CSV once per unique
+    (profile, model) pair.
 
-    Each dict must contain:
-        fasta_path, tool, sample_id
-    And optionally:
-        profile, model, coverage, sample_type
-
-    The ground truth CSV is read once per unique (profile, model) pair to avoid
-    re-reading the full 1.1 M-row file for every sample.
+    Each dict must contain: fasta_path, tool, sample_id
+    Optionally: profile, model, coverage, sample_type
     """
-    # Cache viral ID sets by (profile, model)
     cache: dict[tuple, set] = {}
     results = []
     for s in samples:
@@ -241,7 +212,7 @@ def evaluate_batch(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Evaluate viral detection precision, recall, and F1 score."
+        description="Evaluate viral detection precision, recall, and F1."
     )
     parser.add_argument("fasta", help="FASTA file of predicted viral contigs")
     parser.add_argument(
@@ -249,17 +220,15 @@ if __name__ == "__main__":
         default=str(config.CONTIG_IDENTITIES),
         help="Path to contig_identities.csv",
     )
-    parser.add_argument("--tool",       required=True, help="Tool name")
-    parser.add_argument("--sample-id",  required=True, help="Sample identifier")
-    parser.add_argument("--profile",    default=None,  help="e.g. SRR5720320")
-    parser.add_argument("--model",      default=None,  help="e.g. miseq | hiseq | novaseq")
-    parser.add_argument("--coverage",   default="",    help="e.g. 1x")
-    parser.add_argument("--sample-type",default="",    help="e.g. single | equal2 | unequal3")
+    parser.add_argument("--tool",        required=True)
+    parser.add_argument("--sample-id",   required=True)
+    parser.add_argument("--profile",     default=None, help="e.g. SRR4831655")
+    parser.add_argument("--model",       default=None, help="e.g. hiseq | miseq | novaseq")
+    parser.add_argument("--coverage",    default="")
+    parser.add_argument("--sample-type", default="")
     args = parser.parse_args()
 
-    viral_ids = load_viral_contig_ids(
-        Path(args.ground_truth), args.profile, args.model
-    )
+    viral_ids = load_viral_contig_ids(Path(args.ground_truth), args.profile, args.model)
     result = evaluate(
         fasta_path=Path(args.fasta),
         ground_truth_viral=viral_ids,

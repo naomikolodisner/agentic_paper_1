@@ -23,8 +23,9 @@ LOG_DIR = PROJECT_ROOT / "logs"
 ############################
 
 XFILE = "xad"
-XFILE_DIR = PROJECT_ROOT
+XFILE_DIR = PROJECT_ROOT / "data" / "sample_lists"
 SPADES_DIR = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "assemblies"
+BACKGROUND_ASSEMBLIES = PROJECT_ROOT / "data" / "background_assemblies"
 CONTIG_IDENTITIES = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "contig_identities.csv"
 
 ############################

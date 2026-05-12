@@ -22,7 +22,7 @@ contig_ids = list(references_meta['contig_id'])
 fasta_file = "/groups/gwatts/databases/AVrC/AVrC_allsequences.fasta"
 fasta_index = SeqIO.index(fasta_file, "fasta")
 
-ref_outdir = Path("/xdisk/gwatts/kolodisner/agentic_paper_1/dataset_creation/samples")
+ref_outdir = Path("/xdisk/gwatts/kolodisner/agentic_paper_1/data/spike_in_samples")
 
 sample_types = {
     'single': 1,
