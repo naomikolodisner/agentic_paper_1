@@ -17,6 +17,7 @@ The sample directory name encodes both fields: SRR4831655_hiseq
 """
 
 import csv
+import re
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
@@ -110,19 +111,28 @@ def load_viral_contig_ids(
 # FASTA parsing
 # --------------------------------------------------------------------------- #
 
-def parse_fasta_ids(fasta_path: Path) -> set:
+def parse_fasta_ids(fasta_path: Path, tool: str = "") -> set:
     """
     Extract contig IDs from a viral detection tool's output FASTA.
 
     Handles both common header styles:
-      >k141_2191, av_score: 0.605        (Seeker)
-      >k141_18325 flag=1 multi=4 len=562 (SPAdes-style)
+      >k141_2191, av_score: 0.605        (Seeker / VirFinder)
+      >k141_18325 flag=1 multi=4 len=562 (SPAdes-style / VIBRANT)
+
+    Tool-specific normalization:
+      VirSorter:  >VIRSorter_k141_NNNN_flag=... → k141_NNNN
     """
+    _tool = tool.lower()
     ids = set()
     with open(fasta_path) as f:
         for line in f:
             if line.startswith(">"):
                 token = line[1:].strip().split(",")[0].split()[0]
+                if _tool in ("virsorter", "virsort"):
+                    # VIRSorter prepends "VIRSorter_" and appends "_flag=..."
+                    m = re.match(r"^VIRSorter_(.+?)_flag=", token)
+                    if m:
+                        token = m.group(1)
                 ids.add(token)
     return ids
 
@@ -165,7 +175,7 @@ def evaluate(
     Prefer pre-loading ground_truth_viral with load_viral_contig_ids() and
     reusing it across calls rather than reloading the CSV each time.
     """
-    predicted = parse_fasta_ids(fasta_path)
+    predicted = parse_fasta_ids(fasta_path, tool=tool)
     precision, recall, f1, tp, fp, fn = compute_metrics(predicted, ground_truth_viral)
     return EvalResult(
         tool=tool, sample_id=sample_id,

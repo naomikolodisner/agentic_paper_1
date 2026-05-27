@@ -221,3 +221,4 @@ agentic_testing/
 test*
 data/
 dataset_creation/
+cmd_*

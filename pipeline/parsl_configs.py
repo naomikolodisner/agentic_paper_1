@@ -5,6 +5,17 @@ from parsl.providers import SlurmProvider
 from parsl.usage_tracking.levels import LEVEL_1
 
 _LOG_DIR = "/xdisk/gwatts/kolodisner/agentic_paper_1/logs/runinfo"
+_PROJECT_ROOT = "/xdisk/gwatts/kolodisner/agentic_paper_1"
+_CONDA_ROOT = "/groups/gwatts/miniconda3"
+
+# Executed on each compute node before workers start.
+# 1. Activates the main conda env so the right Python/packages are available.
+# 2. Exports PYTHONPATH so worker processes can import the `pipeline` package.
+_WORKER_INIT = (
+    f"source {_CONDA_ROOT}/etc/profile.d/conda.sh && "
+    f"conda activate academy_py311 && "
+    f"export PYTHONPATH={_PROJECT_ROOT}:$PYTHONPATH"
+)
 
 viral_config = Config(
     run_dir=_LOG_DIR,
@@ -25,7 +36,7 @@ viral_config = Config(
                 exclusive=True,
                 walltime='12:00:00',
                 launcher=SrunLauncher(),
-                worker_init='',
+                worker_init=_WORKER_INIT,
             ),
         )
     ],
@@ -52,7 +63,7 @@ checkv_config = Config(
                 cmd_timeout=60 * 60 * 12,
                 walltime='4:00:00',
                 launcher=SrunLauncher(overrides="--time=4:00:00"),
-                worker_init='',
+                worker_init=_WORKER_INIT,
             ),
         )
     ],
@@ -78,7 +89,7 @@ derep_cluster_config = Config(
                 cmd_timeout=60,
                 walltime='1:00:00',
                 launcher=SrunLauncher(),
-                worker_init='',
+                worker_init=_WORKER_INIT,
             ),
         )
     ],
@@ -104,7 +115,7 @@ blast_config = Config(
                 cmd_timeout=60,
                 walltime='1:00:00',
                 launcher=SrunLauncher(),
-                worker_init='',
+                worker_init=_WORKER_INIT,
             ),
         )
     ],
