@@ -6,14 +6,13 @@ from academy.agent import Agent, action
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline.parsl_configs import checkv_config
 
 
 # --------------------------------------------------------------------------- #
 # Parsl app
 # --------------------------------------------------------------------------- #
 
-@python_app
+@python_app(executors=['checkv_htex'])
 def checkv_app(
     checkv_parser, parse_length, work_dir,
     unzipped_spades, viral_result, checkv_output_dir,
@@ -24,17 +23,28 @@ def checkv_app(
     import socket
     import shutil
     print("CheckV Running on node:", socket.gethostname(), flush=True)
+
+    # Guard: if the upstream tool found no viral sequences, the input FASTA will
+    # be absent (or empty).  Skip CheckV rather than crashing.
+    if not os.path.isfile(viral_result) or os.path.getsize(viral_result) == 0:
+        print(
+            f"[CheckV] Input file missing or empty — no viral sequences detected. "
+            f"Skipping CheckV for: {viral_result}",
+            flush=True,
+        )
+        return None, 0.0
+
     if os.path.exists(checkv_output_dir):
         shutil.rmtree(checkv_output_dir)
     os.makedirs(checkv_output_dir)
 
     cmd_checkv = [
-        "conda", "run", "-n", "checkv", "checkv", "end_to_end",
+        "conda", "run", "-n", "checkv_env", "checkv", "end_to_end",
         viral_result, checkv_output_dir, "-t", "4", "-d", checkvdb,
     ]
     cmd_parser = [
         "conda", "run", "-n", "r_env", "Rscript", checkv_parser,
-        "-i", parse_input, "-l", parse_length, "-o", selection_csv,
+        "-i", parse_input, "-l", str(parse_length), "-o", selection_csv,
     ]
     subprocess.run(cmd_checkv, check=True)
     subprocess.run(cmd_parser, check=True)
@@ -43,7 +53,7 @@ def checkv_app(
     with open(selection_csv, "r") as infile, open(cleaned_selection_csv, "w") as outfile:
         for line in infile:
             if line.startswith("contig_id"):
-                outfile.write(line)
+                continue  # seqtk subseq requires a plain ID list; skip the header row
             else:
                 clean_line = line.split("||")[0].strip()
                 outfile.write(f"{clean_line}\n")
@@ -55,8 +65,6 @@ def checkv_app(
     subset_spades = os.path.join(checkv_output_dir, "subset_spades.fasta")
     with open(subset_spades, "w") as out_f:
         subprocess.run(cmd_seqtk, check=True, stdout=out_f)
-
-    os.chdir(work_dir)
 
     # quality_ratio: fraction of detected contigs rated High-quality by CheckV.
     # Kept as a future-use evaluation signal alongside F1.
@@ -84,8 +92,7 @@ def checkv_app(
 
 class CheckVAgent(Agent):
     def __init__(self):
-        parsl.clear()
-        parsl.load(checkv_config)
+        super().__init__()
 
     @action
     async def run_checkv(

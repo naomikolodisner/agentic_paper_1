@@ -8,14 +8,13 @@ from academy.agent import Agent, action
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline.parsl_configs import blast_config
 
 
 # --------------------------------------------------------------------------- #
 # Parsl apps
 # --------------------------------------------------------------------------- #
 
-@python_app
+@python_app(executors=['blast_htex'])
 def split_fasta_app(fasta_file, split_dir, split_size):
     import os
     import subprocess
@@ -33,7 +32,7 @@ def split_fasta_app(fasta_file, split_dir, split_size):
     return split_dir
 
 
-@python_app
+@python_app(executors=['blast_htex'])
 def make_blast_db_app(db_dir, max_db_size, db_list_path):
     import os
     import subprocess
@@ -74,7 +73,7 @@ def make_blast_db_app(db_dir, max_db_size, db_list_path):
     return "blast_db_complete"
 
 
-@python_app
+@python_app(executors=['blast_htex'])
 def run_blast_app(split_dir, blast_results_dir, db_dir, blast_type, eval_param, out_fmt, max_target_seqs):
     import os
     import subprocess
@@ -107,8 +106,8 @@ def run_blast_app(split_dir, blast_results_dir, db_dir, blast_type, eval_param, 
     return "blast_complete"
 
 
-@python_app
-def merge_blast_results_app(work_dir, merge_results_dir, db_dir, file_name):
+@python_app(executors=['blast_htex'])
+def merge_blast_results_app(blast_results_dir, merge_results_dir, db_dir, file_name):
     import os
     import socket
     print("Merge Blast Running on node:", socket.gethostname(), flush=True)
@@ -119,7 +118,7 @@ def merge_blast_results_app(work_dir, merge_results_dir, db_dir, file_name):
     for db in databases:
         results_by_db = os.path.join(merge_results_dir, f"{db}.fasta")
         os.makedirs(results_by_db, exist_ok=True)
-        blast_out_dir = os.path.join(work_dir, "results", "05C_blast", f"{db}.fasta", file_name)
+        blast_out_dir = os.path.join(blast_results_dir, f"{db}.fasta", file_name)
         blast_results = os.path.join(results_by_db, f"{file_name}.txt")
         blast_gff = os.path.join(results_by_db, f"{file_name}.gff")
 
@@ -151,8 +150,7 @@ def merge_blast_results_app(work_dir, merge_results_dir, db_dir, file_name):
 
 class BLASTAgent(Agent):
     def __init__(self):
-        parsl.clear()
-        parsl.load(blast_config)
+        super().__init__()
 
     @action
     async def run_full_blast(
@@ -187,7 +185,7 @@ class BLASTAgent(Agent):
         )
         await asyncio.to_thread(blast_future.result)
 
-        merge_future = merge_blast_results_app(work_dir, merge_results_dir, db_dir, file_name)
+        merge_future = merge_blast_results_app(blast_results_dir, merge_results_dir, db_dir, file_name)
         hits_file = await asyncio.to_thread(merge_future.result)
 
         # match_ratio: fraction of clustered contigs that hit the AVrC database.

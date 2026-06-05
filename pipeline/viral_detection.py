@@ -6,14 +6,15 @@ from academy.agent import Agent, action
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline.parsl_configs import viral_config
 
 
 # --------------------------------------------------------------------------- #
-# Parsl apps — each activates its own conda environment
+# Parsl apps — each activates its own conda environment.
+# All apps are pinned to the 'viral_htex' executor defined in combined_config,
+# which is loaded once in coordinator.py main() before any agents are created.
 # --------------------------------------------------------------------------- #
 
-@python_app
+@python_app(executors=['viral_htex'])
 def unzip_fasta_app(spades_gz, unzipped_spades_path):
     import subprocess
     import os
@@ -28,7 +29,7 @@ def unzip_fasta_app(spades_gz, unzipped_spades_path):
     return unzipped_spades_path
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def virsorter2_app(unzipped_spades, virsorter2_output_dir):
     import subprocess
     import os
@@ -47,7 +48,7 @@ def virsorter2_app(unzipped_spades, virsorter2_output_dir):
     return os.path.join(virsorter2_output_dir, "final-viral-combined.fa")
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_dir):
     import subprocess
     import os
@@ -55,7 +56,6 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
     print("DeepVirFinder Running on node:", socket.gethostname(), flush=True)
     if not os.path.exists(dvf_output_dir):
         os.makedirs(dvf_output_dir)
-    os.chdir(dvf_db)
     cmd = [
         "conda", "run", "-n", "dvf_env",
         "python", "dvf.py",
@@ -63,11 +63,13 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
         "-o", dvf_output_dir,
         "-l", "1500",
     ]
-    subprocess.run(cmd, check=True)
-    os.chdir(work_dir)
-    dvf_output = os.path.join(dvf_output_dir, "contigs.fasta_gt1500bp_dvfpred.txt")
+    # cwd=dvf_db: dvf.py must be invoked from its own directory (relative import paths)
+    subprocess.run(cmd, check=True, cwd=dvf_db)
+    dvf_output = os.path.join(
+        dvf_output_dir,
+        os.path.basename(unzipped_spades) + "_gt1500bp_dvfpred.txt",
+    )
     dvf_fasta_output = os.path.join(dvf_output_dir, "dvf.fasta")
-    os.chdir(script_dir)
     cmd2 = [
         "conda", "run", "-n", "dvf_env",
         "python", "id_from_fasta.py",
@@ -75,12 +77,11 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
         "-d", dvf_output,
         "-o", dvf_fasta_output,
     ]
-    subprocess.run(cmd2, check=True)
-    os.chdir(work_dir)
+    subprocess.run(cmd2, check=True, cwd=script_dir)
     return dvf_fasta_output
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def genomad_app(unzipped_spades, genomad_output_dir, genomad_db):
     import subprocess
     import os
@@ -94,10 +95,12 @@ def genomad_app(unzipped_spades, genomad_output_dir, genomad_db):
         unzipped_spades, genomad_output_dir, genomad_db,
     ]
     subprocess.run(cmd, check=True)
-    return os.path.join(genomad_output_dir, "contigs_summary", "contigs_virus.fna")
+    # geNomad names output dirs/files after the input FASTA stem, not "contigs"
+    stem = os.path.splitext(os.path.basename(unzipped_spades))[0]
+    return os.path.join(genomad_output_dir, stem + "_summary", stem + "_virus.fna")
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
     import subprocess
     import os
@@ -116,7 +119,7 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
     return os.path.join(marvel_output_dir, "prokka", "contigs", "prokka_results_contigs.fna")
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def virfinder_app(unzipped_spades, virfinder_output_dir):
     import subprocess
     import os
@@ -133,19 +136,25 @@ def virfinder_app(unzipped_spades, virfinder_output_dir):
     res <- VF.pred("{unzipped_spades}")
     write.table(res, file="{vf_tsv}", sep="\\t", row.names=FALSE, quote=FALSE)
     """
-    rscript_path = os.path.expanduser("~/.conda/envs/virfinder/bin/Rscript")
-    subprocess.run([rscript_path, "-e", r_script], check=True)
+    subprocess.run(
+        ["conda", "run", "-n", "virfinder", "Rscript", "-e", r_script],
+        check=True,
+    )
     cmd_filter = (
         f"awk -F '\\t' 'NR>1 && $5 < {q_cutoff} {{print $1}}' "
         f"{vf_tsv} > {ids_file}"
     )
     subprocess.run(cmd_filter, shell=True, check=True)
-    cmd_extract = f"seqkit grep -f {ids_file} {unzipped_spades} > {viral_fasta}"
-    subprocess.run(cmd_extract, shell=True, check=True)
+    cmd_extract = [
+        "conda", "run", "-n", "seqtk_env", "seqkit", "grep",
+        "-f", ids_file, unzipped_spades,
+    ]
+    with open(viral_fasta, "w") as out_f:
+        subprocess.run(cmd_extract, check=True, stdout=out_f)
     return viral_fasta
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def vibrant_app(unzipped_spades, vibrant_db, vibrant_output_dir):
     import subprocess
     import os
@@ -159,13 +168,13 @@ def vibrant_app(unzipped_spades, vibrant_db, vibrant_output_dir):
         "python3", vibrant_script,
         "-i", unzipped_spades,
         "-folder", vibrant_output_dir, "-d", vibrant_db,
-        "-t", "16", "-f", "nucl", "-no_plot",
+        "-t", "16", "-f", "nucl", "--no_plot",
     ]
     subprocess.run(cmd, check=True)
     return vibrant_output_dir  # directory; caller must locate the viral FASTA inside
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def viralverify_app(unzipped_spades, viralverify_output_dir, hmm_db):
     import subprocess
     import os
@@ -183,7 +192,7 @@ def viralverify_app(unzipped_spades, viralverify_output_dir, hmm_db):
     return viralverify_output_dir  # directory; caller must locate the viral FASTA inside
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def viraminer_app(unzipped_spades, viraminer_db, viraminer_output_dir):
     import subprocess
     import os
@@ -211,15 +220,15 @@ def viraminer_app(unzipped_spades, viraminer_db, viraminer_output_dir):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = ""
     cmd = [
-        "conda", "run", "-n", "viraminer", "python", viraminer_script,
+        "conda", "run", "--no-capture-output", "-n", "viraminer", "python", viraminer_script,
         "--input_file", csv_file, "--model_path", viraminer_model,
     ]
     with open(output_txt, "w") as f:
-        subprocess.run(cmd, stdout=f, check=True)
+        subprocess.run(cmd, stdout=f, check=True, env=env)
     return output_txt  # predictions TXT, not FASTA; F1 evaluation skipped for this tool
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def metaphinder_app(unzipped_spades, metaphinder_db, blast_path, metaphinder_output_dir):
     import subprocess
     import os
@@ -235,10 +244,10 @@ def metaphinder_app(unzipped_spades, metaphinder_db, blast_path, metaphinder_out
         "-o", metaphinder_output_dir,
     ]
     subprocess.run(cmd, cwd=metaphinder_db, check=True)
-    return os.path.join(metaphinder_output_dir, "contigs_summary", "contigs_virus.fna")
+    return os.path.join(metaphinder_output_dir, "output.txt")
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def seeker_app(unzipped_spades, seeker_output_dir):
     import subprocess
     import os
@@ -258,14 +267,16 @@ def seeker_app(unzipped_spades, seeker_output_dir):
     return out_fasta
 
 
-@python_app
+@python_app(executors=['viral_htex'])
 def virsorter_app(unzipped_spades, virsorter_db, virsorter_script, virsorter_output_dir):
     import subprocess
     import os
+    import shutil
     import socket
     print("VirSorter Running on node:", socket.gethostname(), flush=True)
-    if not os.path.exists(virsorter_output_dir):
-        os.makedirs(virsorter_output_dir)
+    if os.path.exists(virsorter_output_dir):
+        shutil.rmtree(virsorter_output_dir)
+    os.makedirs(virsorter_output_dir)
     cmd = [
         "conda", "run", "-n", "virsorter", virsorter_script,
         "-f", unzipped_spades, "--db", "1", "--wdir", virsorter_output_dir,
@@ -285,8 +296,7 @@ def virsorter_app(unzipped_spades, virsorter_db, virsorter_script, virsorter_out
 
 class ViralDetectionAgent(Agent):
     def __init__(self):
-        parsl.clear()
-        parsl.load(viral_config)
+        super().__init__()
 
     @action
     async def run_tool(

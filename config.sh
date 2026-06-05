@@ -18,7 +18,7 @@ export LOG_DIR=$PROJECT_ROOT/logs
 # Assembly inputs
 ############################
 
-export XFILE=xac
+export XFILE=xad
 export XFILE2=xad
 export XFILE_DIR=$PROJECT_ROOT/data/sample_lists
 export SPADES_DIR=$PROJECT_ROOT/data/set3_simulated_metagenomes/assemblies
@@ -30,7 +30,7 @@ export BACKGROUND_ASSEMBLIES=$PROJECT_ROOT/data/background_assemblies
 
 export OUT_CHECKV=$RESULTS_ROOT/02_checkv
 export CHECKVDB=$DB_ROOT/checkv-db-v1.5
-export CHECKV_PARSER=$PROJECT_ROOT/CheckV_parser.R
+export CHECKV_PARSER=$PROJECT_ROOT/scripts/CheckV_parser.R
 export PARSE_LENGTH=5000
 
 # VirSorter2

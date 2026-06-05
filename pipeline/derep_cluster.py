@@ -6,14 +6,13 @@ from academy.agent import Agent, action
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline.parsl_configs import derep_cluster_config
 
 
 # --------------------------------------------------------------------------- #
 # Parsl apps
 # --------------------------------------------------------------------------- #
 
-@python_app
+@python_app(executors=['derep_htex'])
 def dereplicate_app(
     sample_id, subset_spades, cluster_dir, cluster_res_derep,
     tmp_dir_derep, input_fasta, cleaned_fasta, out_derep,
@@ -37,30 +36,22 @@ def dereplicate_app(
     )
     subprocess.run(cmd_awk, shell=True, check=True)
 
-    os.makedirs(out_derep, exist_ok=True)
-    done_flag = os.path.join(out_derep, f"done_{sample_id}.flag")
-    with open(done_flag, "w") as f:
-        f.write("done\n")
-
-    return os.path.join(out_derep, "dereplicated.fasta")
+    return cleaned_fasta
 
 
-@python_app
+@python_app(executors=['derep_htex'])
 def cluster_app(
     sample_ids, out_derep, derep_fasta, out_cluster,
     cluster_res_cluster, tmp_dir_cluster, rep_seq_src, rep_seq_dst,
 ):
     import os
     import shutil
-    import time
     import subprocess
     import socket
     print("Cluster Running on node:", socket.gethostname(), flush=True)
 
-    done_flags = [os.path.join(out_derep, f"done_{sid}.flag") for sid in sample_ids]
-    while not all(os.path.exists(flag) for flag in done_flags):
-        time.sleep(5)
-
+    # No polling loop needed: coordinator's asyncio.gather already ensures all
+    # run_dereplicate futures complete before run_cluster is called.
     with open(derep_fasta, "w") as outfile:
         for root, _, files in os.walk(out_derep):
             for file in files:
@@ -87,8 +78,7 @@ def cluster_app(
 
 class DereplicationClusteringAgent(Agent):
     def __init__(self):
-        parsl.clear()
-        parsl.load(derep_cluster_config)
+        super().__init__()
 
     @action
     async def run_dereplicate(

@@ -6,8 +6,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mem=4G
-#SBATCH --partition=standard
-#SBATCH --account=gwatts
+#SBATCH --partition=compute
+#SBATCH --account=blhurwit
 #SBATCH --cpus-per-task=4
 
 CONDA="/groups/gwatts/miniconda3"

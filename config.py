@@ -1,15 +1,16 @@
 from pathlib import Path
+import os
 import shutil
 
 ############################
 # Base directories
 ############################
 
-XDISK = Path("/xdisk/gwatts")
-PROJECT_ROOT = XDISK / "kolodisner" / "agentic_paper_1"
+BASE = Path("/rs1/researchers/b/blhurwit/users")
+PROJECT_ROOT = BASE / "nkolodi" / "agentic_paper_1"
 RESULTS_ROOT = PROJECT_ROOT / "results"
-DB_ROOT = Path("/groups/gwatts/databases")
-TOOL_ROOT = Path("/groups/gwatts/tools")
+DB_ROOT = BASE / "nkolodi" / "databases"
+TOOL_ROOT = BASE / "nkolodi" / "tools"
 
 ############################
 # Logs & scripts
@@ -77,7 +78,7 @@ OUT_CHECKV_VIRAMINER = OUT_CHECKV / "02H_viraminer"
 
 # MetaPhinder 
 OUT_METAPHINDER = RESULTS_ROOT / "01_viral_detection" / "01I_metaphinder"
-BLAST_PATH = "/home/u3/kolodisner/.conda/envs/blast/bin/"
+BLAST_PATH = os.environ.get('BLAST_BIN_PATH', str(BASE / "nkolodi" / "conda_envs" / "blast_env" / "bin") + "/")
 METAPHINDER_DB = TOOL_ROOT / "MetaPhinder"
 OUT_CHECKV_METAPHINDER = OUT_CHECKV / "02I_metaphinder"
 
@@ -86,7 +87,7 @@ OUT_SEEKER = RESULTS_ROOT / "01_viral_detection" / "01J_seeker"
 OUT_CHECKV_SEEKER = OUT_CHECKV / "02J_seeker"
 
 # VirSorter
-OUT_VIRSORTER = RESULTS_ROOT / "01_viral_detection" / "01K_visorter"
+OUT_VIRSORTER = RESULTS_ROOT / "01_viral_detection" / "01K_virsorter"
 OUT_CHECKV_VIRSORTER = OUT_CHECKV / "02K_virsorter"
 VIRSORTER_DB = DB_ROOT / "virsorter-data"
 VIRSORTER_SCRIPT = TOOL_ROOT / "VirSorter" / "wrapper_phage_contigs_sorter_iPlant.pl" 
