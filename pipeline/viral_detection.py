@@ -40,7 +40,7 @@ def virsorter2_app(unzipped_spades, virsorter2_output_dir):
         shutil.rmtree(virsorter2_output_dir)
     os.makedirs(virsorter2_output_dir)
     cmd = [
-        "conda", "run", "-n", "virsorter2_env",
+        "conda", "run", "-n", "virsorter2",
         "virsorter", "run", "-w", virsorter2_output_dir,
         "-i", unzipped_spades, "--min-length", "1500", "-j", "4", "all",
     ]
@@ -57,7 +57,7 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
     if not os.path.exists(dvf_output_dir):
         os.makedirs(dvf_output_dir)
     cmd = [
-        "conda", "run", "-n", "dvf_env",
+        "conda", "run", "-n", "dvf",
         "python", "dvf.py",
         "-i", unzipped_spades,
         "-o", dvf_output_dir,
@@ -71,7 +71,7 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
     )
     dvf_fasta_output = os.path.join(dvf_output_dir, "dvf.fasta")
     cmd2 = [
-        "conda", "run", "-n", "dvf_env",
+        "conda", "run", "-n", "dvf",
         "python", "id_from_fasta.py",
         "-c", unzipped_spades,
         "-d", dvf_output,
@@ -90,7 +90,7 @@ def genomad_app(unzipped_spades, genomad_output_dir, genomad_db):
     if not os.path.exists(genomad_output_dir):
         os.makedirs(genomad_output_dir)
     cmd = [
-        "conda", "run", "-n", "genomad_env",
+        "conda", "run", "-n", "genomad",
         "genomad", "end-to-end", "--cleanup", "--restart",
         unzipped_spades, genomad_output_dir, genomad_db,
     ]
@@ -110,7 +110,7 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
         os.makedirs(marvel_output_dir)
     unzipped_spades_marvel = os.path.dirname(unzipped_spades)
     cmd = [
-        "conda", "run", "-n", "marvel_env", "python3",
+        "conda", "run", "-n", "marvel", "python3",
         "marvel_bins.py", "-i", unzipped_spades_marvel, "-t", "16",
         "-o", marvel_output_dir,
     ]
@@ -146,7 +146,7 @@ def virfinder_app(unzipped_spades, virfinder_output_dir):
     )
     subprocess.run(cmd_filter, shell=True, check=True)
     cmd_extract = [
-        "conda", "run", "-n", "seqtk_env", "seqkit", "grep",
+        "conda", "run", "-n", "seqtk", "seqkit", "grep",
         "-f", ids_file, unzipped_spades,
     ]
     with open(viral_fasta, "w") as out_f:
@@ -182,7 +182,7 @@ def viralverify_app(unzipped_spades, viralverify_output_dir, hmm_db):
     print("viralVerify Running on node:", socket.gethostname(), flush=True)
     if not os.path.exists(viralverify_output_dir):
         os.makedirs(viralverify_output_dir)
-    viralverify = os.path.join(hmm_db, "viralVerify", "bin", "viralverify")
+    viralverify = os.path.join(hmm_db, "bin", "viralverify")
     viralverify_db = os.path.join(hmm_db, "nbc_hmms.hmm")
     cmd = [
         "conda", "run", "-n", "viralverify", viralverify, "-f",
@@ -278,7 +278,7 @@ def virsorter_app(unzipped_spades, virsorter_db, virsorter_script, virsorter_out
         shutil.rmtree(virsorter_output_dir)
     os.makedirs(virsorter_output_dir)
     cmd = [
-        "conda", "run", "-n", "virsorter", virsorter_script,
+        "conda", "run", "-n", "virsorter", "perl", virsorter_script,
         "-f", unzipped_spades, "--db", "1", "--wdir", virsorter_output_dir,
         "--ncpu", "4", "--data-dir", virsorter_db,
     ]

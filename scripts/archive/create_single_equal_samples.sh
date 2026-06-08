@@ -17,14 +17,14 @@ echo "Running on node $(hostname)"
 
 # Activate conda
 #source /groups/gwatts/miniconda3/etc/profile.d/conda.sh
-#conda activate test_env
+#conda activate test
 #echo "Conda activated"
 
 GEN_TITRATION="/xdisk/gwatts/kolodisner/agentic_paper_1/scripts/gen_titration_sample.py"
 SAMPLES_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/data/spike_in_samples/single"
 BACKGROUND_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/data/no_virus_contigs"
-ART_BIN="/home/u3/kolodisner/.conda/envs/test_env/bin/art_illumina"
-PYTHON_BIN="$HOME/.conda/envs/test_env/bin/python"
+ART_BIN="/home/u3/kolodisner/.conda/envs/test/bin/art_illumina"
+PYTHON_BIN="$HOME/.conda/envs/test/bin/python"
 
 mkdir -p /xdisk/gwatts/kolodisner/agentic_paper_1/logs/slurm /xdisk/gwatts/kolodisner/agentic_paper_1/logs/sample
 

@@ -1,6 +1,7 @@
 import os
 import asyncio
 import parsl
+import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from glob import glob
@@ -53,6 +54,52 @@ def read_sample_ids(sample_ids_file: str) -> list[str]:
         return [line.strip() for line in f if line.strip()]
 
 
+def select_spike_in_samples() -> tuple[str, str, list[tuple[str, str]]]:
+    """
+    Randomly pick a sample type and coverage from spike_in_samples.
+
+    Returns (sample_type, coverage, [(sample_id, assembly_path), ...]) where
+    sample_id is "{sample_type}_{sample_name}" and assembly_path points to the
+    assembly.fa for the chosen coverage.  All returned samples share the same
+    type and coverage.
+    """
+    spike_dir = config.SPIKE_IN_DIR
+    types = sorted(d.name for d in spike_dir.iterdir() if d.is_dir())
+    if not types:
+        raise RuntimeError(f"No sample type directories found in {spike_dir}")
+
+    sample_type = random.choice(types)
+    type_dir = spike_dir / sample_type
+
+    sample_dirs = sorted(d for d in type_dir.iterdir() if d.is_dir())
+    if not sample_dirs:
+        raise RuntimeError(f"No sample directories found in {type_dir}")
+
+    # Intersect coverage directories that have assembly.fa across all samples
+    common_coverages: set[str] | None = None
+    for sample_dir in sample_dirs:
+        coverages = {
+            d.name
+            for d in sample_dir.iterdir()
+            if d.is_dir() and (d / "assembly.fa").exists()
+        }
+        common_coverages = coverages if common_coverages is None else common_coverages & coverages
+
+    if not common_coverages:
+        raise RuntimeError(
+            f"No coverage directory with assembly.fa is common across all "
+            f"samples of type '{sample_type}'"
+        )
+
+    coverage = random.choice(sorted(common_coverages))
+
+    samples = [
+        (f"{sample_type}_{d.name}", str(d / coverage / "assembly.fa"))
+        for d in sample_dirs
+    ]
+    return sample_type, coverage, samples
+
+
 def _resolve_viral_fasta(tool: str, viral_result: str) -> str | None:
     """
     Return the path to a FASTA file from a tool's output, or None if the
@@ -82,6 +129,7 @@ def _resolve_viral_fasta(tool: str, viral_result: str) -> str | None:
 
 async def process_sample(
     sample_id: str,
+    assembly_path: str,
     tool: str,
     viral_handle,
     checkv_handle,
@@ -94,7 +142,7 @@ async def process_sample(
     Returns (derep_fasta | None, quality_ratio, f1_score | None).
     derep_fasta is only returned for first_sample_id; others return None.
     """
-    unzipped_spades = str(config.SPADES_DIR / sample_id / "assembly.fa")
+    unzipped_spades = assembly_path
     profile, model = sample_id.rsplit("_", 1)
 
     # === Viral Detection ===
@@ -104,7 +152,7 @@ async def process_sample(
             str(config.OUT_GENOMAD / sample_id), str(config.GENOMAD_DB),
             str(config.OUT_VIRSORTER2 / sample_id),
             str(config.OUT_DVF / sample_id), str(config.DVF_DB),
-            str(config.WORK_DIR), str(config.WORK_DIR),
+            str(config.WORK_DIR), str(config.DVF_SCRIPT_DIR),
             str(config.OUT_MARVEL / sample_id), str(config.MARVEL_DB),
             str(config.OUT_VIRFINDER / sample_id),
             str(config.VIBRANT_DB), str(config.OUT_VIBRANT / sample_id),
@@ -216,32 +264,37 @@ class CoordinatorAgent(Agent):
     @loop
     async def continuous_pipeline(self, shutdown: asyncio.Event) -> None:
         round_count = 0
+
+        # Select spike-in sample type, coverage, and assemblies once for all rounds.
+        spike_type, spike_coverage, spike_samples = select_spike_in_samples()
+        sample_ids    = [sid for sid, _ in spike_samples]
+        assembly_map  = {sid: path for sid, path in spike_samples}
+        first_sample_id = sample_ids[0]
+        print(
+            f"[Coordinator] Spike-in run: type={spike_type}  coverage={spike_coverage}"
+            f"  samples={len(sample_ids)}",
+            flush=True,
+        )
+
         while not shutdown.is_set():
             print(
-                f"\n=== [Coordinator] Round {round_count + 1} | Tool: {self.current_tool} ===",
+                f"\n=== [Coordinator] Round {round_count + 1}"
+                f" | Type: {spike_type}  Coverage: {spike_coverage}"
+                f" | Tool: {self.current_tool} ===",
                 flush=True,
             )
 
-            sample_ids = read_sample_ids(str(config.XFILE_DIR / config.XFILE))
-            if not sample_ids:
-                raise RuntimeError(f"No sample IDs found in {config.XFILE_DIR / config.XFILE}")
-            first_sample_id = sample_ids[0]
-
-            # Pre-load ground truth once per (profile, model) — CSV is 1.1 M rows
-            gt_cache: dict[tuple, set] = {}
-            for sid in sample_ids:
-                profile, model = sid.rsplit("_", 1)
-                key = (profile, model)
-                if key not in gt_cache:
-                    gt_cache[key] = f1_eval.load_viral_contig_ids(
-                        config.CONTIG_IDENTITIES, profile, model
-                    )
+            # Ground truth is not available for spike-in samples; F1 scores will
+            # be 0 and tool selection will operate in explore mode throughout.
+            gt_cache: dict[tuple, set] = {
+                tuple(sid.rsplit("_", 1)): set() for sid in sample_ids
+            }
 
             # === Per-sample: viral detection + F1 + CheckV + dereplication ===
             per_sample_tasks = [
                 asyncio.create_task(
                     process_sample(
-                        sid, self.current_tool,
+                        sid, assembly_map[sid], self.current_tool,
                         self.viral_handle, self.checkv_handle, self.cluster_handle,
                         first_sample_id,
                         gt_cache[tuple(sid.rsplit("_", 1))],
@@ -268,6 +321,7 @@ class CoordinatorAgent(Agent):
                     "[Coordinator] All samples failed this round — retrying next round.",
                     flush=True,
                 )
+                round_count += 1
                 await asyncio.sleep(10)
                 continue
 
@@ -285,6 +339,31 @@ class CoordinatorAgent(Agent):
             avg_f1 = sum(f1_scores) / len(f1_scores) if f1_scores else 0.0
             self.f1_history.append(avg_f1)
             print(f"[Coordinator] Avg F1: {avg_f1:.4f}", flush=True)
+
+            # === Tool scoring — F1 is the primary signal ===
+            # Only score if at least one sample produced an F1 result; if all
+            # crashed (f1_scores is empty) we treat it as "tool broken" and
+            # leave the score unset so the selector explores other tools.
+            if f1_scores:
+                self.selector.update_tool_score(self.current_tool, avg_f1)
+            # Exclude ViraMiner: its predictions TXT has no FASTA extraction yet,
+            # so it would always score 0.0 and bias selection results.
+            operational_tools = [t for t in ToolSelector.TOOLS if t != "ViraMiner"]
+            self.current_tool = self.selector.choose_tool(operational_tools)
+            print(f"[Coordinator] Next tool: {self.current_tool}", flush=True)
+
+            round_count += 1
+            if round_count >= 10:
+                print("[Coordinator] 10 rounds complete. Shutting down.", flush=True)
+                self.shutdown.set()
+                final_avg_f1      = sum(self.f1_history) / len(self.f1_history) if self.f1_history else 0.0
+                final_avg_quality = sum(self.quality_ratios_history) / len(self.quality_ratios_history) if self.quality_ratios_history else 0.0
+                final_avg_match   = sum(self.match_ratios_history) / len(self.match_ratios_history) if self.match_ratios_history else 0.0
+                print(f"\n[Coordinator] FINAL avg F1 over 10 rounds:           {final_avg_f1:.4f}", flush=True)
+                print(f"[Coordinator] FINAL avg quality_ratio (future use):   {final_avg_quality:.4f}", flush=True)
+                print(f"[Coordinator] FINAL avg match_ratio   (future use):   {final_avg_match:.4f}", flush=True)
+                print(f"[Coordinator] Best tool: {self.selector.best_tool}", flush=True)
+                break
 
             # === Cluster ===
             derep_fasta = next((df for df, _, _ in results if df is not None), None)
@@ -325,14 +404,6 @@ class CoordinatorAgent(Agent):
                 flush=True,
             )
 
-            # === Tool scoring — F1 is the primary signal ===
-            self.selector.update_tool_score(self.current_tool, avg_f1)
-            # Exclude ViraMiner: its predictions TXT has no FASTA extraction yet,
-            # so it would always score 0.0 and bias selection results.
-            operational_tools = [t for t in ToolSelector.TOOLS if t != "ViraMiner"]
-            self.current_tool = self.selector.choose_tool(operational_tools)
-            print(f"[Coordinator] Next tool: {self.current_tool}", flush=True)
-
             # === Annotation ===
             script_path = os.path.join(work_dir, "solution1_manual.py")
             if not os.path.exists(script_path):
@@ -346,19 +417,6 @@ class CoordinatorAgent(Agent):
                     script_path, config.PCTID, config.LENGTH,
                 )
                 print("[Coordinator]", final, flush=True)
-
-            round_count += 1
-            if round_count >= 10:
-                print("[Coordinator] 10 rounds complete. Shutting down.", flush=True)
-                self.shutdown.set()
-                final_avg_f1      = sum(self.f1_history) / len(self.f1_history) if self.f1_history else 0.0
-                final_avg_quality = sum(self.quality_ratios_history) / len(self.quality_ratios_history) if self.quality_ratios_history else 0.0
-                final_avg_match   = sum(self.match_ratios_history) / len(self.match_ratios_history) if self.match_ratios_history else 0.0
-                print(f"\n[Coordinator] FINAL avg F1 over 10 rounds:           {final_avg_f1:.4f}", flush=True)
-                print(f"[Coordinator] FINAL avg quality_ratio (future use):   {final_avg_quality:.4f}", flush=True)
-                print(f"[Coordinator] FINAL avg match_ratio   (future use):   {final_avg_match:.4f}", flush=True)
-                print(f"[Coordinator] Best tool: {self.selector.best_tool}", flush=True)
-                break
 
             await asyncio.sleep(5)
 

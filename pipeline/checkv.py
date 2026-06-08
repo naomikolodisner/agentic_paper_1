@@ -39,11 +39,11 @@ def checkv_app(
     os.makedirs(checkv_output_dir)
 
     cmd_checkv = [
-        "conda", "run", "-n", "checkv_env", "checkv", "end_to_end",
+        "conda", "run", "-n", "checkv", "checkv", "end_to_end",
         viral_result, checkv_output_dir, "-t", "4", "-d", checkvdb,
     ]
     cmd_parser = [
-        "conda", "run", "-n", "r_env", "Rscript", checkv_parser,
+        "conda", "run", "-n", "r", "Rscript", checkv_parser,
         "-i", parse_input, "-l", str(parse_length), "-o", selection_csv,
     ]
     subprocess.run(cmd_checkv, check=True)
@@ -59,12 +59,16 @@ def checkv_app(
                 outfile.write(f"{clean_line}\n")
 
     cmd_seqtk = [
-        "conda", "run", "-n", "seqtk_env", "seqtk", "subseq",
+        "conda", "run", "-n", "seqtk", "seqtk", "subseq",
         unzipped_spades, cleaned_selection_csv,
     ]
     subset_spades = os.path.join(checkv_output_dir, "subset_spades.fasta")
     with open(subset_spades, "w") as out_f:
         subprocess.run(cmd_seqtk, check=True, stdout=out_f)
+
+    if os.path.getsize(subset_spades) == 0:
+        print("[CheckV] subset_spades.fasta is empty — no sequences passed quality filter.", flush=True)
+        return None, 0.0
 
     # quality_ratio: fraction of detected contigs rated High-quality by CheckV.
     # Kept as a future-use evaluation signal alongside F1.

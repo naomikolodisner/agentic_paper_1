@@ -25,7 +25,7 @@ def split_fasta_app(fasta_file, split_dir, split_size):
         shutil.rmtree(split_dir)
     os.makedirs(split_dir, exist_ok=True)
     cmd = [
-        "conda", "run", "-n", "fasplit_env",
+        "conda", "run", "-n", "fasplit",
         "faSplit", "about", fasta_file, str(split_size), f"{split_dir}/",
     ]
     subprocess.run(cmd, check=True)
@@ -61,7 +61,7 @@ def make_blast_db_app(db_dir, max_db_size, db_list_path):
             if all(os.path.exists(f"{db_prefix}.{ext}") for ext in ["nhr", "nin", "nsq"]):
                 continue
             cmd = [
-                "conda", "run", "-n", "blast_env",
+                "conda", "run", "-n", "blast",
                 "makeblastdb",
                 "-title", db_name,
                 "-out", db_prefix,
@@ -93,7 +93,7 @@ def run_blast_app(split_dir, blast_results_dir, db_dir, blast_type, eval_param, 
             blast_out = os.path.join(result_dir, f"{split_file}.blastout")
             blast_db = os.path.join(db_dir, db_base)
             cmd = [
-                "conda", "run", "-n", "blast_env", blast_type,
+                "conda", "run", "-n", "blast", blast_type,
                 "-num_threads", "48",
                 "-db", blast_db,
                 "-query", os.path.join(split_dir, split_file),

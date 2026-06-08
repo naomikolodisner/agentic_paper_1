@@ -210,7 +210,7 @@ def virsorter2_app(unzipped_spades, virsorter2_output_dir):
         shutil.rmtree(virsorter2_output_dir)
     os.makedirs(virsorter2_output_dir)   
     cmd = [
-        "conda", "run", "-n", "virsorter2_env",
+        "conda", "run", "-n", "virsorter2",
         "virsorter", "run", "-w", virsorter2_output_dir,
         "-i", unzipped_spades, "--min-length", "1500", "-j", "4", "all"
     ]
@@ -227,7 +227,7 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
     import socket
     print("DeepVirFinder Running on node:", socket.gethostname(), flush=True)
     cmd = [
-        "conda", "run", "-n", "dvf_env",
+        "conda", "run", "-n", "dvf",
         "python", "dvf.py",
         "-i", unzipped_spades,
         "-o", dvf_output_dir,
@@ -243,7 +243,7 @@ def deepvirfinder_app(unzipped_spades, dvf_output_dir, dvf_db, work_dir, script_
     os.chdir(script_dir)
 
     cmd2 = [
-        "conda", "run", "-n", "dvf_env",
+        "conda", "run", "-n", "dvf",
         "python", "id_from_fasta.py",
         "-c", unzipped_spades,
         "-d", dvf_output,
@@ -263,7 +263,7 @@ def genomad_app(unzipped_spades, genomad_output_dir, genomad_db):
         os.makedirs(genomad_output_dir)
     print("GeNomad Running on node:", socket.gethostname(), flush=True)
     cmd = [
-        "conda", "run", "-n", "genomad_env",
+        "conda", "run", "-n", "genomad",
         "genomad", "end-to-end", "--cleanup", "--restart", 
         unzipped_spades, genomad_output_dir, genomad_db
     ]
@@ -281,7 +281,7 @@ def marvel_app(unzipped_spades, marvel_output_dir, marvel_db):
     print("MARVEL Running on node:", socket.gethostname(), flush=True)
     unzipped_spades_marvel = os.path.dirname(unzipped_spades) 
     cmd = [
-        "conda", "run", "-n", "marvel_env", "python3",
+        "conda", "run", "-n", "marvel", "python3",
         "marvel_bins.py", "-i", unzipped_spades_marvel, "-t", "16",
         "-o", marvel_output_dir]
     subprocess.run(cmd, cwd=marvel_db, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -574,7 +574,7 @@ def checkv_app(checkv_parser, parse_length, work_dir,
         viral_result, checkv_output_dir, "-t", "4", "-d", checkvdb
     ]
     cmd_parser = [
-        "conda", "run", "-n", "r_env", "Rscript", checkv_parser,
+        "conda", "run", "-n", "r", "Rscript", checkv_parser,
         "-i", parse_input, "-l", parse_length, "-o", selection_csv
     ]
 
@@ -589,7 +589,7 @@ def checkv_app(checkv_parser, parse_length, work_dir,
                 clean_line = line.split("||")[0].strip()
                 outfile.write(f"{clean_line}\n")
     cmd_seqtk = [
-        "conda", "run", "-n", "seqtk_env", "seqtk", "subseq",
+        "conda", "run", "-n", "seqtk", "seqtk", "subseq",
         unzipped_spades, cleaned_selection_csv
     ]
     subset_spades = os.path.join(checkv_output_dir, "subset_spades.fasta")
@@ -765,7 +765,7 @@ def split_fasta_app(fasta_file: str, split_dir: str, split_size: int):
     os.makedirs(split_dir, exist_ok=True)
 
     cmd = [
-        "conda", "run", "-n", "fasplit_env",
+        "conda", "run", "-n", "fasplit",
         "faSplit", "about", fasta_file, str(split_size), f"{split_dir}/"
     ]
     subprocess.run(cmd, check=True)
@@ -804,7 +804,7 @@ def make_blast_db_app(db_dir: str, max_db_size: int, db_list_path: str):
                 continue
 
             cmd = [
-                "conda", "run", "-n", "blast_env",
+                "conda", "run", "-n", "blast",
                 "makeblastdb",
                 "-title", db_name,
                 "-out", db_prefix,
@@ -842,7 +842,7 @@ def run_blast_app(
             blast_db = os.path.join(db_dir, db_base)
 
             cmd = [
-                "conda", "run", "-n", "blast_env", blast_type,
+                "conda", "run", "-n", "blast", blast_type,
                 "-num_threads", "48",
                 "-db", blast_db,
                 "-query", os.path.join(split_dir, split_file),

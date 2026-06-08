@@ -16,8 +16,8 @@ echo "Running on node $(hostname)"
 GEN_TITRATION="/xdisk/gwatts/kolodisner/agentic_paper_1/scripts/gen_titration_sample.py"
 SAMPLES_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/data/spike_in_samples/single"
 BACKGROUND_DIR="/xdisk/gwatts/kolodisner/agentic_paper_1/data/no_virus_contigs"
-ART_BIN="/home/u3/kolodisner/.conda/envs/test_env/bin/art_illumina"
-PYTHON_BIN="$HOME/.conda/envs/test_env/bin/python"
+ART_BIN="/home/u3/kolodisner/.conda/envs/test/bin/art_illumina"
+PYTHON_BIN="$HOME/.conda/envs/test/bin/python"
 
 source /broad/software/scripts/useuse
 use Anaconda3

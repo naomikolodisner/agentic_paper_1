@@ -28,6 +28,7 @@ XFILE_DIR = PROJECT_ROOT / "data" / "sample_lists"
 SPADES_DIR = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "assemblies"
 BACKGROUND_ASSEMBLIES = PROJECT_ROOT / "data" / "background_assemblies"
 CONTIG_IDENTITIES = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "contig_identities.csv"
+SPIKE_IN_DIR = PROJECT_ROOT / "data" / "spike_in_samples"
 
 ############################
 # Viral detection tools
@@ -45,6 +46,7 @@ OUT_CHECKV_VIRSORTER2 = OUT_CHECKV / "02A_virsorter2"
 # DeepVirFinder
 OUT_DVF = RESULTS_ROOT / "01_viral_detection" / "01B_dvf"
 DVF_DB = DB_ROOT / "DeepVirFinder"
+DVF_SCRIPT_DIR = BASE / "nkolodi" / "fmt_viruses" / "06_get_viruses"
 OUT_CHECKV_DVF = OUT_CHECKV / "02B_dvf"
 
 # geNomad
@@ -78,7 +80,7 @@ OUT_CHECKV_VIRAMINER = OUT_CHECKV / "02H_viraminer"
 
 # MetaPhinder 
 OUT_METAPHINDER = RESULTS_ROOT / "01_viral_detection" / "01I_metaphinder"
-BLAST_PATH = os.environ.get('BLAST_BIN_PATH', str(BASE / "nkolodi" / "conda_envs" / "blast_env" / "bin") + "/")
+BLAST_PATH = os.environ.get('BLAST_BIN_PATH', str(BASE / "nkolodi" / "conda_envs" / "blast" / "bin") + "/")
 METAPHINDER_DB = TOOL_ROOT / "MetaPhinder"
 OUT_CHECKV_METAPHINDER = OUT_CHECKV / "02I_metaphinder"
 

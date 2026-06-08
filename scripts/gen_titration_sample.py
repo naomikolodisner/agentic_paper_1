@@ -13,7 +13,8 @@ import subprocess
 from pathlib import Path
 import os
 from Bio import SeqIO
-from sh import seqtk
+
+SEQTK_BIN = "/rs1/researchers/b/blhurwit/users/nkolodi/conda_envs/test_env/bin/seqtk"
 
 #from strainge_benchmarks import open_compressed
 import gzip
@@ -34,7 +35,7 @@ export TMPDIR="{tmpdir}"
 paste  <(cat {r1} "{b1}") \\
        <(cat {r2} "{b2}") \\
     | paste - - - - \\
-    | /home/u3/kolodisner/terashuf/terashuf \\
+    | shuf \\
     | awk -F'\\t' '{{OFS="\\n"; print $1,$3,$5,$7 > "{out_prefix}.1.fq";\\
         print $2,$4,$6,$8 > "{out_prefix}.2.fq"}}'
 
@@ -129,10 +130,26 @@ def main():
     logger.info("Subsampling reads from background sample...")
     b1 = tempfile.NamedTemporaryFile(mode='w')
     b2 = tempfile.NamedTemporaryFile(mode='w')
-    seqtk.sample("-s", seed, args.B1, reads_from_bg,
-                 _out=b1)
-    seqtk.sample("-s", seed, args.B2, reads_from_bg,
-                 _out=b2)
+    subprocess.run([SEQTK_BIN, "sample", "-s", str(seed), str(args.B1), str(reads_from_bg)],
+                   stdout=b1, check=True)
+    subprocess.run([SEQTK_BIN, "sample", "-s", str(seed), str(args.B2), str(reads_from_bg)],
+                   stdout=b2, check=True)
+    b1.flush()
+    b2.flush()
+
+    b1_size = os.path.getsize(b1.name)
+    b2_size = os.path.getsize(b2.name)
+    logger.info("Background sample sizes: B1=%d bytes, B2=%d bytes", b1_size, b2_size)
+    if b2_size == 0:
+        logger.error("B2 temp file is empty after seqtk — background2.fq may be empty or missing")
+        return 1
+
+    b1_count = int(subprocess.run(['awk', 'NR%4==1{c++} END{print c+0}', b1.name], stdout=subprocess.PIPE).stdout)
+    b2_count = int(subprocess.run(['awk', 'NR%4==1{c++} END{print c+0}', b2.name], stdout=subprocess.PIPE).stdout)
+    logger.info("Background read counts: B1=%d reads, B2=%d reads", b1_count, b2_count)
+    if b1_count != b2_count:
+        logger.error("B1 and B2 read counts differ (%d vs %d) — background FASTQ has unequal R1/R2 read counts", b1_count, b2_count)
+        return 1
 
     if args.R1.name.endswith('.gz'):
         r1 = f'<(zcat "{args.R1}")'
