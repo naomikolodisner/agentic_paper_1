@@ -31,6 +31,42 @@ CONTIG_IDENTITIES = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "cont
 SPIKE_IN_DIR = PROJECT_ROOT / "data" / "spike_in_samples"
 
 ############################
+# InSilicoSeq (ISS) synthetic sample creation
+############################
+
+ISS_BIN = BASE / "nkolodi" / "conda_envs" / "insilicoseq" / "bin" / "iss"
+
+# Directory of PHORAGER's prophage-stripped HumGut MAGs -- one FASTA file per
+# MAG (each may be multi-contig). PHORAGER has not been run on HumGut yet
+# (HumGut is currently just the downloaded tar at
+# /rs1/shares/brc/admin/databases/HumGut/HumGut2.tar; PHORAGER itself lives at
+# /rs1/researchers/b/blhurwit/work/PHORAGER). Update this path once that run
+# completes -- scripts/generate_background.sh fails fast with a clear error
+# until it exists.
+#
+# IMPORTANT: ISS's --draft treats each FILE passed to it as one genome (a
+# single multi-record FASTA of many MAGs concatenated together would be
+# wrongly treated as ONE organism) -- verified empirically 2026-07-07. This
+# must stay a directory of one-file-per-MAG, globbed and passed as multiple
+# --draft arguments by generate_background.sh.
+HUMGUT_PROPHAGE_REMOVED_DIR = DB_ROOT / "HumGut" / "prophage_removed"
+HUMGUT_MAG_GLOB = "*.fasta"
+
+BACKGROUND_ISS_DIR = PROJECT_ROOT / "data" / "background_iss"
+BACKGROUND_MANIFEST = BACKGROUND_ISS_DIR / "manifest.tsv"
+
+ISS_MODELS = ["hiseq", "miseq", "novaseq", "nextseq"]
+ISS_ABUNDANCE_DISTS = ["lognormal", "halfnormal", "exponential", "uniform"]
+BACKGROUND_N_READS = ["0.5M", "1M", "2M"]
+
+# Spike-in grid: random subset of viral genomes per sample, spiked at a total
+# read-fraction percentage, using each of ISS_ABUNDANCE_DISTS to split that
+# total across the subset's individual genomes (own dataset variant each).
+VIRAL_SUBSET_SIZES = [5, 10, 20]
+SPIKE_PERCENTAGES = [0.001, 0.01, 0.05, 0.10]
+NUM_REPLICATES_PER_SUBSET_SIZE = 5
+
+############################
 # Viral detection tools
 ############################
 
@@ -107,6 +143,7 @@ OUT_CLUSTER = RESULTS_ROOT / "04_cluster"
 
 DB_DIR = DB_ROOT / "AVrC"
 MAX_DB_SIZE = "0.5GB"
+AVRC_ALL_SEQUENCES = DB_DIR / "AVrC_allsequences.fasta"
 
 FASTA_DIR = PROJECT_ROOT / "query"
 FA_SPLIT_FILE_SIZE = 5_000_000  # bytes
@@ -131,6 +168,14 @@ BLAST_HITS = (
 )
 ANNOTATIONS = DB_ROOT / "AVrC" / "database_csv"
 OUTPUT = RESULTS_ROOT / "06_annotate"
+AVRC_METADATA_CSV = ANNOTATIONS / "AvRCv1.Merged_ViralDesc.csv"
+
+############################
+# Kraken2 (sanity-check gate)
+############################
+
+KRAKEN2_DB = Path("/rs1/shares/brc/admin/databases/kraken2_pluspfp")
+KRAKEN2_SEQID2TAXID = KRAKEN2_DB / "seqid2taxid.map"
 
 ############################
 # Utility functions

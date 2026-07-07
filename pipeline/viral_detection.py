@@ -168,7 +168,7 @@ def vibrant_app(unzipped_spades, vibrant_db, vibrant_output_dir):
         "python3", vibrant_script,
         "-i", unzipped_spades,
         "-folder", vibrant_output_dir, "-d", vibrant_db,
-        "-t", "16", "-f", "nucl", "--no_plot",
+        "-t", "16", "-f", "nucl", "-no_plot",
     ]
     subprocess.run(cmd, check=True)
     return vibrant_output_dir  # directory; caller must locate the viral FASTA inside

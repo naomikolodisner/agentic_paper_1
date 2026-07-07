@@ -3,8 +3,9 @@
 # assemble.sh
 #
 # Assembles spike-in FASTQ files into contigs using MegaHit, producing an
-# assembly.fa in each sample's coverage directory. This is the final step in
-# spike-in sample creation and makes the data usable by viral detection tools.
+# assembly.fa alongside each dist/percentage tier's final FASTQ. This is the
+# final step in spike-in sample creation and makes the data usable by viral
+# detection tools.
 #
 # This script is meant to be run as a SLURM array job over a work list of
 # FASTQ files. The work list is generated automatically by submit_pipeline.sh
@@ -14,8 +15,8 @@
 #   - MegaHit v1.2.9
 #   - Minimum contig length: 1000 bp
 #
-# Output: assembly.fa alongside each sample.1.fq.gz / sample.2.fq.gz pair
-#   e.g. data/spike_in_samples/equal2/sample3/1x/assembly.fa
+# Output: assembly.fa alongside each final.1.fq.gz / final.2.fq.gz pair
+#   e.g. data/spike_in_samples/sample_10v_3/lognormal/spike_1pct/assembly.fa
 #
 # The script is idempotent — it skips any sample that already has assembly.fa.
 #
@@ -23,7 +24,7 @@
 #   MegaHit must be installed:
 #     conda install -n test_env -c bioconda megahit=1.2.9 -y
 #
-#   read_mixing.sh must have completed for all sample types.
+#   read_mixing.sh must have completed for all sample dirs.
 #
 # This script is normally submitted by submit_pipeline.sh, not directly.
 # =============================================================================
@@ -69,7 +70,7 @@ if [ "$SLURM_ARRAY_TASK_ID" -ge "${#R1_FILES[@]}" ]; then
 fi
 
 r1="${R1_FILES[$SLURM_ARRAY_TASK_ID]}"
-r2="${r1/sample.1.fq.gz/sample.2.fq.gz}"
+r2="${r1/final.1.fq.gz/final.2.fq.gz}"
 out_dir=$(dirname "$r1")
 assembly_out="${out_dir}/assembly.fa"
 

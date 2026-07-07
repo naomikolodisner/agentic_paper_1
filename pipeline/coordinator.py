@@ -54,50 +54,53 @@ def read_sample_ids(sample_ids_file: str) -> list[str]:
         return [line.strip() for line in f if line.strip()]
 
 
-def select_spike_in_samples() -> tuple[str, str, list[tuple[str, str]]]:
+def select_spike_in_samples() -> tuple[str, list[tuple[str, str]]]:
     """
-    Randomly pick a sample type and coverage from spike_in_samples.
+    Randomly pick a distribution/percentage tier and a sample from spike_in_samples.
 
-    Returns (sample_type, coverage, [(sample_id, assembly_path), ...]) where
-    sample_id is "{sample_type}_{sample_name}" and assembly_path points to the
-    assembly.fa for the chosen coverage.  All returned samples share the same
-    type and coverage.
+    Directory layout: SPIKE_IN_DIR/sample_{size}v_{n}/{dist}/spike_{pct}pct/assembly.fa
+    (no "sample type" level -- each sample dir already has a fixed random
+    subset of viral references, and every sample dir generates the same set
+    of dist/percentage leaf tiers).
+
+    Returns (leaf_tier, [(sample_id, assembly_path), ...]) where leaf_tier is
+    "{dist}/spike_{pct}pct" and sample_id is the sample dir's name.
     """
     spike_dir = config.SPIKE_IN_DIR
-    types = sorted(d.name for d in spike_dir.iterdir() if d.is_dir())
-    if not types:
-        raise RuntimeError(f"No sample type directories found in {spike_dir}")
-
-    sample_type = random.choice(types)
-    type_dir = spike_dir / sample_type
-
-    sample_dirs = sorted(d for d in type_dir.iterdir() if d.is_dir())
+    sample_dirs = sorted(
+        d for d in spike_dir.iterdir() if d.is_dir() and d.name.startswith("sample_")
+    )
     if not sample_dirs:
-        raise RuntimeError(f"No sample directories found in {type_dir}")
+        raise RuntimeError(f"No sample directories found in {spike_dir}")
 
-    # Intersect coverage directories that have assembly.fa across all samples
-    common_coverages: set[str] | None = None
+    # Intersect dist/pct leaf tiers that have assembly.fa across all samples
+    common_tiers: set[str] | None = None
     for sample_dir in sample_dirs:
-        coverages = {
-            d.name
-            for d in sample_dir.iterdir()
-            if d.is_dir() and (d / "assembly.fa").exists()
+        tiers = {
+            f"{dist_dir.name}/{pct_dir.name}"
+            for dist_dir in sample_dir.iterdir()
+            if dist_dir.is_dir()
+            for pct_dir in dist_dir.iterdir()
+            if pct_dir.is_dir() and (pct_dir / "assembly.fa").exists()
         }
-        common_coverages = coverages if common_coverages is None else common_coverages & coverages
+        common_tiers = tiers if common_tiers is None else common_tiers & tiers
 
-    if not common_coverages:
+    if not common_tiers:
         raise RuntimeError(
-            f"No coverage directory with assembly.fa is common across all "
-            f"samples of type '{sample_type}'"
+            f"No dist/percentage tier with assembly.fa is common across all "
+            f"sample directories in {spike_dir}"
         )
 
-    coverage = random.choice(sorted(common_coverages))
+    def _pct_of(tier: str) -> float:
+        pct_part = tier.split("/")[1]  # "spike_{pct}pct"
+        return float(pct_part.removeprefix("spike_").removesuffix("pct"))
 
-    samples = [
-        (f"{sample_type}_{d.name}", str(d / coverage / "assembly.fa"))
-        for d in sample_dirs
-    ]
-    return sample_type, coverage, samples
+    max_pct = max(_pct_of(t) for t in common_tiers)
+    leaf_tier = random.choice([t for t in common_tiers if _pct_of(t) == max_pct])
+
+    sample_dir = random.choice(sample_dirs)
+    samples = [(sample_dir.name, str(sample_dir / leaf_tier / "assembly.fa"))]
+    return leaf_tier, samples
 
 
 def _resolve_viral_fasta(tool: str, viral_result: str) -> str | None:
@@ -110,7 +113,7 @@ def _resolve_viral_fasta(tool: str, viral_result: str) -> str | None:
     ViraMiner returns a predictions TXT — F1 evaluation is skipped for it.
     """
     import glob
-    if os.path.isfile(viral_result) and viral_result.endswith((".fa", ".fna", ".fasta")):
+    if viral_result.endswith((".fa", ".fna", ".fasta")):
         return viral_result
     if tool == "VIBRANT" and os.path.isdir(viral_result):
         matches = glob.glob(
@@ -193,9 +196,14 @@ async def process_sample(
         )
         print(result.summary(), flush=True)
         f1_score = result.f1
-    else:
+    elif viral_fasta is None:
         print(
             f"[{sample_id}] Cannot resolve viral FASTA for {tool} — F1 skipped",
+            flush=True,
+        )
+    else:
+        print(
+            f"[{sample_id}] {tool} produced no viral sequences — F1 skipped",
             flush=True,
         )
 
@@ -265,13 +273,13 @@ class CoordinatorAgent(Agent):
     async def continuous_pipeline(self, shutdown: asyncio.Event) -> None:
         round_count = 0
 
-        # Select spike-in sample type, coverage, and assemblies once for all rounds.
-        spike_type, spike_coverage, spike_samples = select_spike_in_samples()
+        # Select spike-in tier (distribution/percentage) and assemblies once for all rounds.
+        spike_tier, spike_samples = select_spike_in_samples()
         sample_ids    = [sid for sid, _ in spike_samples]
         assembly_map  = {sid: path for sid, path in spike_samples}
         first_sample_id = sample_ids[0]
         print(
-            f"[Coordinator] Spike-in run: type={spike_type}  coverage={spike_coverage}"
+            f"[Coordinator] Spike-in run: tier={spike_tier}"
             f"  samples={len(sample_ids)}",
             flush=True,
         )
@@ -279,7 +287,7 @@ class CoordinatorAgent(Agent):
         while not shutdown.is_set():
             print(
                 f"\n=== [Coordinator] Round {round_count + 1}"
-                f" | Type: {spike_type}  Coverage: {spike_coverage}"
+                f" | Tier: {spike_tier}"
                 f" | Tool: {self.current_tool} ===",
                 flush=True,
             )
