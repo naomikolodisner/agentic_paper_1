@@ -29,22 +29,25 @@ sbatch run_viral_detection.sh
 python archive/agentic_viral_benchmark.py
 ```
 
-**Dataset preparation (run before the main pipeline) — InSilicoSeq (ISS)-based, run from project root:**
+**Dataset preparation (run before the main pipeline), run from project root:**
 ```bash
 python scripts/pick_refs.py               # Pick a random viral-genome subset (5/10/20 refs) per sample
-sbatch scripts/generate_background.sh     # Build the background pool from HumGut/PHORAGER MAGs (48-combo array)
-sbatch scripts/kraken2_sanity_check.sh    # Gate: confirm spiked viral refs are kraken2-detectable
-sbatch scripts/read_mixing.sh             # Build every dist x percentage spike-in combo per sample
+sbatch scripts/generate_background.sh     # Build the background pool from raw HumGut MAGs via ISS (4-combo array)
+sbatch scripts/read_mixing.sh             # Build every percentage spike-in combo per sample via ART
+sbatch scripts/kraken2_check.sh           # Gate: confirm spiked viral refs are kraken2-detectable in the real mixed reads
 # then build the assembly work list and submit scripts/assemble.sh (array)
 
 # or submit the whole chain with correct dependencies in one go:
 bash scripts/submit_pipeline.sh
 ```
-ART Illumina has been retired in favor of InSilicoSeq (ISS) — see "Synthetic Sample Creation
-(ISS)" below. `scripts/remove_viral_contigs.py` and `data/no_virus_contigs/` /
-`data/background_assemblies/` (the old ERR-marine-metagenome background) are superseded and no
-longer used by the current scripts, but are left in place; `scripts/archive/` holds the retired
-ART-era sample-creation scripts.
+Background generation uses InSilicoSeq (ISS) — see "Synthetic Sample Creation" below. Viral
+spike-in read simulation uses **ART Illumina** (reintroduced deliberately, scoped to spike-in
+only — background stays on ISS), mixed with the ISS-generated background pool.
+`scripts/remove_viral_contigs.py` and `data/no_virus_contigs/` / `data/background_assemblies/`
+(the old ERR-marine-metagenome background) are superseded and no longer used by the current
+scripts, but are left in place; `scripts/archive/` holds the retired
+equal2/equal3/equal4/unequal2/unequal3-era sample-creation scripts that `read_mixing.sh`'s ART
+coverage logic is modeled on.
 
 **Run F1 evaluation standalone:**
 ```bash
@@ -94,42 +97,91 @@ Three tools return non-FASTA output (VIBRANT returns a directory, viralVerify re
 - `derep_cluster_config` — 1 core/worker, 94 workers/node, 1h walltime
 - `blast_config` — 1 core/worker, 94 workers/node, 1h walltime
 
-### Synthetic Sample Creation (ISS)
+### Synthetic Sample Creation
 
-The spike-in benchmark dataset (`data/spike_in_samples/`) is built entirely with
-[InSilicoSeq](https://insilicoseq.readthedocs.io/) (`insilicoseq` conda env), not ART — ART has
-no realistic per-instrument error model and is Illumina/PacBio-agnostic in a way that doesn't
-match real sequencers; ISS ships pre-built HiSeq/MiSeq/NextSeq/NovaSeq models (no PacBio).
+The background pool is built with [InSilicoSeq](https://insilicoseq.readthedocs.io/)
+(`insilicoseq` conda env) for its realistic per-instrument error models (ISS ships pre-built
+HiSeq/MiSeq/NextSeq/NovaSeq models; ART has no such per-instrument model and is
+Illumina/PacBio-agnostic in a way that doesn't match real sequencers). Viral spike-in reads are
+simulated with **ART Illumina** instead (`test_env` conda env) — reintroduced deliberately,
+scoped to spike-in only, mirroring the retired `scripts/archive/`
+equal2/equal3/equal4/unequal2/unequal3 scripts' fixed-coverage-per-genome approach — then mixed
+with a randomly chosen background row from the ISS pool.
 
 - **Background**: `scripts/generate_background.sh` simulates the virus-free background
-  metagenome from PHORAGER's prophage-stripped HumGut MAGs (`config.HUMGUT_PROPHAGE_REMOVED_DIR`
-  — **not yet populated**; PHORAGER hasn't been run on HumGut yet, so this step fails fast with a
-  clear message until that data lands). Each MAG file is passed as its own `--draft` argument —
-  ISS treats each `--draft` *file* as one genome, so a single file concatenating many MAGs would
-  wrongly be modeled as one organism (verified empirically 2026-07-07). Builds a 48-combo grid
-  (4 `ISS_MODELS` x 4 `ISS_ABUNDANCE_DISTS` x 3 `BACKGROUND_N_READS`), logging each combo's
-  **actual measured** read length and read-pair count to `config.BACKGROUND_MANIFEST` — read
-  length is never hardcoded (the old ART code assumed 100bp; ISS models range 126–300bp).
+  metagenome from a random subset of **raw** HumGut MAGs (prophages intact — PHORAGER hasn't
+  been run on HumGut yet; `scripts/extract_humgut_subset.py` extracts
+  `config.HUMGUT_SUBSET_N` (500) genomes with a fixed seed straight from `config.HUMGUT_TAR`
+  into `config.HUMGUT_RAW_MAGS_DIR`, since HumGut2.tar has never been extracted at all. Swap in
+  `config.HUMGUT_PROPHAGE_REMOVED_DIR` once PHORAGER output lands). Each MAG file is passed as
+  its own `--draft` argument — ISS treats each `--draft` *file* as one genome, so a single file
+  concatenating many MAGs would wrongly be modeled as one organism (verified empirically
+  2026-07-07). Builds a 4-combo grid (2 `config.ISS_MODELS` [`hiseq`, `novaseq`] x 2
+  `BACKGROUND_ABUNDANCE_DISTS` [lognormal + exponential, a "typical" vs. skewed/"abnormal"
+  community] x 1 `BACKGROUND_N_READS` [`1M`, i.e. 500k read pairs — the list is deliberately
+  extensible, e.g. adding a shallower `"0.1M"` depth later just grows the grid]), logging each
+  combo's **actual measured** read length and read-pair count to `config.BACKGROUND_MANIFEST` —
+  read length is never hardcoded. `ISS_MODELS` is scoped to `hiseq`/`novaseq` only: ISS's
+  `miseq`/`nextseq` models both measure ~301bp reads, which exceed every ART built-in profile's
+  max supported length (ART's largest, MSv3, caps at 250bp), so ART can never simulate spike-in
+  reads at a matching length for those two models — see `read_mixing.sh`'s `VALID_BG_ROWS`.
+  `generate_background.sh` also prunes any manifest row that's permanently ART-incompatible
+  (deleting its background files too), so a stale row from an earlier model choice can't linger
+  forever and get selected by `read_mixing.sh`.
 - **Spike-in**: `scripts/pick_refs.py` draws a random subset of `VIRAL_SUBSET_SIZES` (5/10/20)
-  AVrC viral genomes per sample dir (`sample_{size}v_{n}/`). `scripts/read_mixing.sh` then
-  builds every `ISS_ABUNDANCE_DISTS` x `SPIKE_PERCENTAGES` (0.1%/1%/5%/10%) combo per sample: it
-  picks a random background row, computes the exact viral `--n_reads` target for that percentage
-  (`scripts/viral_spike_helper.py total-reads`), and calls
-  `iss generate --genomes contigs.fasta --model {background's model} --abundance {dist}
-  --n_reads {n_reads}` — ISS's own abundance distribution splits the subset's read budget across
-  its genomes realistically (not evenly). Per-genome coverage is a **derived, logged** quantity
-  computed after the fact from ISS's own `*_abundance.txt` output
-  (`scripts/viral_spike_helper.py coverage-log`) — never an independent input.
-  `scripts/combine_reads.py` concatenates + shuffles the viral spike with the background into
-  `sample_{size}v_{n}/{dist}/spike_{pct}pct/final.{1,2}.fq.gz`.
-- **Gate**: `scripts/kraken2_sanity_check.sh` runs once before read-mixing, confirming every
-  viral reference used across the generated samples is actually detectable by kraken2. AVrC
-  references use custom viral-catalog IDs (e.g. `GutCatV1_GPD_113896`), not NCBI accessions, so
-  this can't be an ID-presence lookup against `seqid2taxid.map` — it simulates a small read set
-  per reference and runs one combined kraken2 classify call, exiting nonzero if any reference has
-  zero classified reads. In practice most AVrC genomes are novel/uncultured and get little or no
-  hit against the general-purpose `kraken2_pluspfp` DB — that's an expected, meaningful finding,
-  not a script bug.
+  genomes per sample dir (`sample_{size}v_{n}/`) from the **INPHARED** catalog — specifically the
+  103 accessions (`config.INPHARED_ACCESSIONS_LIST` → `data/accessions_in_kraken2.txt`) from the
+  106-accession VirFinder/INPHARED pre-2014 overlap list confirmed present in kraken2_pluspfp's
+  `seqid2taxid.map` (found by the archived `scripts/archive/check_kraken2_accessions.sh`; 3 of
+  the 106 aren't in kraken2 and are excluded). Each accession is its own single-record FASTA in
+  `config.INPHARED_GENOMES_DIR`. AVrC (`config.AVRC_ALL_SEQUENCES` / `AVRC_METADATA_CSV`) is no
+  longer the spike-in source — those vars are unused now but kept since the same AVrC database
+  (`config.DB_DIR` / `ANNOTATIONS`) still backs the unrelated BLAST annotation step in
+  `pipeline/coordinator.py`. `scripts/read_mixing.sh` then
+  builds **every** combination of `SPIKE_PERCENTAGES` (1%/5%/10% — 0.1% was dropped) x every
+  background row an ART profile can actually simulate spike-in reads at (`VALID_BG_ROWS`,
+  pre-filtered from `config.BACKGROUND_MANIFEST` by measured read length vs.
+  `config.ART_PROFILE_BY_MODEL` / `ART_PROFILE_MAX_LEN`) — exhaustive, not a random per-combo
+  draw. With the current 4-combo background grid that's 3 x 4 = 12 combos per sample dir, 36
+  across all 3 sample dirs. For each combo it computes the total viral read target for that
+  percentage (`scripts/viral_spike_helper.py total-reads`), then
+  splits that total **unevenly** across the subset's genomes by cycling
+  `config.ART_RATIO_WEIGHTS` (`[10, 1, 0.5, 0.1]` — the old equal/unequal scripts' fixed
+  absolute coverages, reused here as relative weights: `scripts/viral_spike_helper.py
+  weighted-coverage-plan`) and converts each genome's share into an `art_illumina -f` fold
+  coverage target via that genome's own real length. Each genome in the subset is then simulated
+  individually with `art_illumina -ss {profile} -p -l {background's measured read length} -f
+  {coverage_target} -m 200 -s 10` and concatenated into one viral R1/R2 pair. Per-genome coverage
+  is a **derived, logged** quantity computed after the fact from ART's own real per-genome read
+  counts (`scripts/viral_spike_helper.py log-actual-coverage`) — never an independent input.
+  `scripts/combine_reads.py` concatenates + shuffles the viral spike with that background row into
+  `sample_{size}v_{n}/spike_{pct}pct_{bg_combo}/final.{1,2}.fq.gz` — the background combo name is
+  part of the directory now, since a given percentage is built against every usable background
+  row rather than one randomly chosen one.
+- **Gate**: `scripts/kraken2_check.sh` runs after read-mixing but before assembly, confirming
+  every viral reference actually spiked into the generated samples is detectable by kraken2
+  using the **real** post-mix reads (not a synthetic simulation). It pools every sample/pct
+  combo's `final.1.fq.gz` as-is (background reads included) and runs ONE combined kraken2
+  classify call over everything, then attributes each classified/unclassified read back to its
+  source genome by parsing kraken2's own read-ID column — reads whose derived genome ID isn't
+  one of the sample's known viral references (i.e. background reads) are ignored. This relies
+  on ART's own read-naming convention for the viral reads (`<genome_id>-<read_number>/1`,
+  verified empirically 2026-07-15 via a live `art_illumina` test), which `combine_reads.py`'s
+  shuffle leaves untouched and kraken2's `--output` echoes verbatim — background reads keep
+  ISS's own convention, but that's irrelevant since background genome IDs never match a known
+  viral reference anyway. It's deliberately agnostic to
+  whichever viral reference catalog built the spike-in samples (AVrC, INPHARED, or otherwise) —
+  no hardcoded catalog FASTA or ID scheme, just whatever `refs_log.txt` `pick_refs.py` already
+  wrote. Some catalogs use custom IDs (e.g. AVrC's `GutCatV1_GPD_113896`) that don't overlap
+  NCBI accessions at all, so this can't be a general ID-presence lookup against
+  `seqid2taxid.map` either. Exits nonzero if any reference has zero classified reads (reported
+  separately from references that got zero real spike-in reads at all, which is a
+  data-generation issue, not a detectability one). The current INPHARED-based catalog was
+  specifically chosen as the 103 accessions already confirmed present in `seqid2taxid.map`, so
+  high classification rates are the expected outcome here — this is a different situation from
+  AVrC (superseded as the spike-in source), whose largely novel/uncultured genomes got little or
+  no hit against the general-purpose `kraken2_pluspfp` DB; a low-recall result for the current
+  catalog would be a real signal worth investigating, not an expected finding.
 - `scripts/assemble.sh` (MegaHit) is unchanged except for the FASTQ filename pattern.
 
 ### Configuration (`config.py`)
@@ -144,10 +196,17 @@ here. `config.sh` (a shell mirror) exists but is stale and unused — no script 
 - Set3 simulated assemblies: `SPADES_DIR` → `data/set3_simulated_metagenomes/assemblies/`
 - Background assemblies (ERR* marine metagenomes, superseded): `BACKGROUND_ASSEMBLIES` → `data/background_assemblies/`
 - Ground truth: `CONTIG_IDENTITIES` → `data/set3_simulated_metagenomes/contig_identities.csv`
-- ISS background/spike-in settings: `ISS_BIN`, `HUMGUT_PROPHAGE_REMOVED_DIR`, `BACKGROUND_ISS_DIR`,
-  `BACKGROUND_MANIFEST`, `ISS_MODELS`, `ISS_ABUNDANCE_DISTS`, `BACKGROUND_N_READS`,
-  `VIRAL_SUBSET_SIZES`, `SPIKE_PERCENTAGES`, `NUM_REPLICATES_PER_SUBSET_SIZE`
-- Kraken2 sanity check: `KRAKEN2_DB`, `KRAKEN2_SEQID2TAXID`
+- ISS background settings: `ISS_BIN`, `HUMGUT_TAR`, `HUMGUT_TSV`, `HUMGUT_SUBSET_N`,
+  `HUMGUT_SUBSET_SEED`, `HUMGUT_RAW_MAGS_DIR`, `HUMGUT_PROPHAGE_REMOVED_DIR` (unused until
+  PHORAGER runs), `BACKGROUND_ISS_DIR`, `BACKGROUND_MANIFEST`, `ISS_MODELS`,
+  `BACKGROUND_ABUNDANCE_DISTS`, `BACKGROUND_N_READS`
+- Spike-in settings (ART-based): `VIRAL_SUBSET_SIZES`, `SPIKE_PERCENTAGES`,
+  `NUM_REPLICATES_PER_SUBSET_SIZE`, `ART_BIN`, `ART_FRAGMENT_MEAN`, `ART_FRAGMENT_SD`,
+  `ART_RATIO_WEIGHTS`, `ART_PROFILE_BY_MODEL`, `ART_PROFILE_MAX_LEN`
+- Spike-in genome catalog (INPHARED-based): `INPHARED_ACCESSIONS_LIST`, `INPHARED_GENOMES_DIR`
+  (`AVRC_ALL_SEQUENCES` / `AVRC_METADATA_CSV` are unused by spike-in now, kept for `DB_DIR`/
+  `ANNOTATIONS`'s unrelated BLAST-annotation use)
+- Kraken2 check: `KRAKEN2_DB`, `KRAKEN2_SEQID2TAXID`
 
 Helper functions: `init_dir()`, `create_dir()`, `lc()` (line count).
 
@@ -160,7 +219,7 @@ Helper functions: `init_dir()`, `create_dir()`, `lc()` (line count).
 | `background_assemblies/` | Original ERR\* marine metagenome assemblies used as background in the old ART pipeline (superseded) |
 | `no_virus_contigs/` | Background assemblies with geNomad-identified viral contigs stripped out (superseded by ISS + HumGut/PHORAGER) |
 | `background_iss/` | ISS-simulated background reads, one dir per model/abundance/n_reads combo; `manifest.tsv` logs each combo's actual read length + pair count |
-| `spike_in_samples/` | ISS-based spike-in samples: `sample_{size}v_{n}/{dist}/spike_{pct}pct/` |
+| `spike_in_samples/` | ART-based spike-in samples mixed with the ISS background pool: `sample_{size}v_{n}/spike_{pct}pct_{bg_combo}/` |
 | `sample_lists/xad` | Sample IDs for the active pipeline run (one `{profile}_{model}` per line) |
 | `sample_lists/xac` | Alternate sample ID list |
 
@@ -184,8 +243,8 @@ Each viral detection tool runs in its own isolated conda environment:
 | `fasplit_env` | FaSplit |
 | `blast_env` | BLAST |
 | `seqtk_env` | seqtk |
-| `test_env` | BioPython/pandas helper scripts (`pick_refs.py`, `viral_spike_helper.py`, `combine_reads.py`), MegaHit |
-| `insilicoseq` | InSilicoSeq (ISS) — synthetic sample creation (background + viral spike-in reads) |
+| `test_env` | BioPython/pandas helper scripts (`pick_refs.py`, `extract_humgut_subset.py`, `viral_spike_helper.py`, `combine_reads.py`), ART Illumina (viral spike-in reads), MegaHit |
+| `insilicoseq` | InSilicoSeq (ISS) — background metagenome read simulation |
 
 Each `@python_app` activates its specific environment via `conda run -n <env>` inside the function body.
 
@@ -199,16 +258,17 @@ Each `@python_app` activates its specific environment via `conda run -n <env>` i
 | `pipeline/tool_selector.py` | Alpha-greedy tool selection |
 | `config.py` | Python config — all paths, DB locations, parameters (source of truth; `config.sh` is stale/unused) |
 | `run_viral_detection.sh` | SLURM submission wrapper — runs `pipeline/coordinator.py` |
-| `scripts/pick_refs.py` | Picks a random viral-genome subset per spike-in sample dir |
-| `scripts/generate_background.sh` | ISS background generation (model x abundance x depth grid) from HumGut/PHORAGER MAGs |
-| `scripts/viral_spike_helper.py` | Computes viral `--n_reads` target from a percentage, and derives per-genome coverage post-hoc |
-| `scripts/read_mixing.sh` | Builds every dist/percentage spike-in combo per sample via ISS |
+| `scripts/pick_refs.py` | Picks a random viral-genome subset (from the 103-accession INPHARED catalog) per spike-in sample dir |
+| `scripts/extract_humgut_subset.py` | One-time, idempotent extraction of a random raw HumGut MAG subset from `HumGut2.tar` |
+| `scripts/generate_background.sh` | ISS background generation (model x abundance x depth grid) from raw HumGut MAGs |
+| `scripts/viral_spike_helper.py` | Computes total viral read target from a percentage, splits it unevenly across a genome subset (`weighted-coverage-plan`), and derives per-genome coverage post-hoc from ART's real output (`log-actual-coverage`) |
+| `scripts/read_mixing.sh` | Builds every percentage spike-in combo per sample via ART, mixed with the ISS background pool |
 | `scripts/combine_reads.py` | Concatenates + shuffles viral spike-in reads with background reads |
 | `scripts/assemble.sh` | MegaHit assembly of each spike-in FASTQ pair |
-| `scripts/kraken2_sanity_check.sh` | Gate: confirms spiked viral refs are kraken2-detectable before the heavier pipeline runs |
-| `scripts/submit_pipeline.sh` | Submits the full ISS sample-creation chain with correct SLURM dependencies |
+| `scripts/kraken2_check.sh` | Gate: confirms spiked viral refs are kraken2-detectable before the heavier pipeline runs |
+| `scripts/submit_pipeline.sh` | Submits the full sample-creation chain with correct SLURM dependencies |
 | `scripts/remove_viral_contigs.py` | Superseded — built the old ART-era ERR-marine-metagenome background |
-| `scripts/archive/` | Retired ART-based sample-creation scripts |
+| `scripts/archive/` | Retired equal2/equal3/equal4/unequal2/unequal3-era sample-creation scripts (basis for `read_mixing.sh`'s ART coverage logic) |
 | `scripts/CheckV_parser.R` | R script for parsing CheckV output |
 | `scripts/experimental/` | In-progress scripts not yet part of the main pipeline |
 

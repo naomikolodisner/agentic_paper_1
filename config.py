@@ -40,9 +40,9 @@ ISS_BIN = BASE / "nkolodi" / "conda_envs" / "insilicoseq" / "bin" / "iss"
 # MAG (each may be multi-contig). PHORAGER has not been run on HumGut yet
 # (HumGut is currently just the downloaded tar at
 # /rs1/shares/brc/admin/databases/HumGut/HumGut2.tar; PHORAGER itself lives at
-# /rs1/researchers/b/blhurwit/work/PHORAGER). Update this path once that run
-# completes -- scripts/generate_background.sh fails fast with a clear error
-# until it exists.
+# /rs1/researchers/b/blhurwit/work/PHORAGER). Update HUMGUT_RAW_MAGS_DIR usage
+# in generate_background.sh to this dir once that run completes -- for now
+# background is generated from raw (prophage-intact) HumGut MAGs instead.
 #
 # IMPORTANT: ISS's --draft treats each FILE passed to it as one genome (a
 # single multi-record FASTA of many MAGs concatenated together would be
@@ -52,19 +52,86 @@ ISS_BIN = BASE / "nkolodi" / "conda_envs" / "insilicoseq" / "bin" / "iss"
 HUMGUT_PROPHAGE_REMOVED_DIR = DB_ROOT / "HumGut" / "prophage_removed"
 HUMGUT_MAG_GLOB = "*.fasta"
 
+# Raw HumGut MAG source (prophages intact) -- extracted by
+# scripts/extract_humgut_subset.py from the tarball below into one plain
+# FASTA per genome in HUMGUT_RAW_MAGS_DIR, since HumGut2.tar has never been
+# extracted (only the tar + its manifest TSV exist on disk). HumGut2.tsv has
+# ~31,226 genome rows total; HUMGUT_SUBSET_N controls how many of those are
+# extracted for use as background draft genomes (fixed seed => reproducible).
+HUMGUT_TAR = Path("/rs1/shares/brc/admin/databases/HumGut/HumGut2.tar")
+HUMGUT_TSV = Path("/rs1/shares/brc/admin/databases/HumGut/HumGut2.tsv")
+HUMGUT_SUBSET_N = 500
+HUMGUT_SUBSET_SEED = 42
+HUMGUT_RAW_MAGS_DIR = DB_ROOT / "HumGut" / "raw_subset"
+
 BACKGROUND_ISS_DIR = PROJECT_ROOT / "data" / "background_iss"
 BACKGROUND_MANIFEST = BACKGROUND_ISS_DIR / "manifest.tsv"
 
-ISS_MODELS = ["hiseq", "miseq", "novaseq", "nextseq"]
-ISS_ABUNDANCE_DISTS = ["lognormal", "halfnormal", "exponential", "uniform"]
-BACKGROUND_N_READS = ["0.5M", "1M", "2M"]
+# Only hiseq and novaseq are usable for the ART-driven spike-in step: ISS's
+# miseq/nextseq models both measure ~301bp reads, which exceed every ART
+# built-in profile (largest is MSv3 at 250bp) -- see ART_PROFILE_BY_MODEL /
+# ART_PROFILE_MAX_LEN below. generate_background.sh loads this list directly
+# (single source of truth) rather than hardcoding its own MODELS array.
+ISS_MODELS = ["hiseq", "novaseq"]
+
+# Background grid: 2 distributions (a "typical" lognormal community and a
+# skewed "abnormal" one -- a few genomes very abundant, most very low) x 1
+# read depth. BACKGROUND_N_READS is deliberately a list (not a scalar) so
+# adding a shallower depth later (e.g. "0.1M") just grows the grid -- the
+# nested-loop combo builder in generate_background.sh doesn't change.
+BACKGROUND_ABUNDANCE_DISTS = ["lognormal", "exponential"]
+BACKGROUND_N_READS = ["1M"]  # 1M total reads (R1+R2) = 500k read pairs
 
 # Spike-in grid: random subset of viral genomes per sample, spiked at a total
-# read-fraction percentage, using each of ISS_ABUNDANCE_DISTS to split that
-# total across the subset's individual genomes (own dataset variant each).
+# read-fraction percentage. No ISS abundance distribution is used for
+# spike-in -- read_mixing.sh uses ART Illumina instead, splitting the
+# percentage-derived total viral read budget unevenly across the subset's
+# genomes via ART_RATIO_WEIGHTS (see below), reusing the old
+# equal2/equal3/equal4/unequal2/unequal3 scripts' fixed coverage ratios as
+# relative weights instead of absolute coverages. read_mixing.sh loads
+# SPIKE_PERCENTAGES directly (single source of truth) rather than hardcoding
+# its own copy, and builds every percentage against every ART-compatible
+# background row (exhaustive, not a random per-combo draw) -- so each sample
+# dir gets len(SPIKE_PERCENTAGES) x (usable background rows) output combos.
 VIRAL_SUBSET_SIZES = [5, 10, 20]
-SPIKE_PERCENTAGES = [0.001, 0.01, 0.05, 0.10]
-NUM_REPLICATES_PER_SUBSET_SIZE = 5
+SPIKE_PERCENTAGES = [0.01, 0.05, 0.10]
+NUM_REPLICATES_PER_SUBSET_SIZE = 1
+
+############################
+# ART Illumina (spike-in viral read simulation)
+############################
+
+ART_BIN = BASE / "nkolodi" / "conda_envs" / "test_env" / "bin" / "art_illumina"
+ART_FRAGMENT_MEAN = 200
+ART_FRAGMENT_SD = 10
+
+# Cycled across a sample's genome subset in order (genome 1 -> 10, genome 2 ->
+# 1, genome 3 -> 0.5, genome 4 -> 0.1, genome 5 -> 10 again, ...) -- the same
+# absolute coverage values scripts/archive/create_single_equal_samples.sh and
+# scripts/archive/create_unequal_samples_slurm.sh used directly, reused here
+# as relative weights that split the pct-derived total viral read budget
+# unevenly instead of equally.
+ART_RATIO_WEIGHTS = [10, 1, 0.5, 0.1]
+
+# ART has no native NovaSeq quality profile (confirmed via `art_illumina
+# --help`); MSv3 is used as the closest available fallback -- ISS's novaseq
+# model measures 151bp reads (verified by loading the model directly), which
+# is 1bp over HS25's 150bp cap but comfortably under MSv3's 250bp one.
+# Profile max supported read lengths: HS25 <=150bp, MSv3 <=250bp, NS50
+# <=75bp -- if a background model's actual ISS-measured read length exceeds
+# its mapped profile's cap, read_mixing.sh filters out that background row
+# rather than invoking ART with an incompatible length.
+ART_PROFILE_BY_MODEL = {
+    "hiseq": "HS25",
+    "miseq": "MSv3",
+    "nextseq": "NS50",
+    "novaseq": "MSv3",
+}
+ART_PROFILE_MAX_LEN = {
+    "HS25": 150,
+    "MSv3": 250,
+    "NS50": 75,
+}
 
 ############################
 # Viral detection tools
@@ -143,6 +210,9 @@ OUT_CLUSTER = RESULTS_ROOT / "04_cluster"
 
 DB_DIR = DB_ROOT / "AVrC"
 MAX_DB_SIZE = "0.5GB"
+# No longer used by pick_refs.py (superseded by INPHARED_* below) -- kept
+# since DB_DIR/ANNOTATIONS (same AVrC database) still back the BLAST
+# annotation step in pipeline/coordinator.py.
 AVRC_ALL_SEQUENCES = DB_DIR / "AVrC_allsequences.fasta"
 
 FASTA_DIR = PROJECT_ROOT / "query"
@@ -168,10 +238,27 @@ BLAST_HITS = (
 )
 ANNOTATIONS = DB_ROOT / "AVrC" / "database_csv"
 OUTPUT = RESULTS_ROOT / "06_annotate"
+# No longer used by pick_refs.py (see INPHARED_ACCESSIONS_LIST below) -- kept
+# for the BLAST annotation step, which is unrelated to spike-in genome choice.
 AVRC_METADATA_CSV = ANNOTATIONS / "AvRCv1.Merged_ViralDesc.csv"
 
 ############################
-# Kraken2 (sanity-check gate)
+# INPHARED spike-in genome catalog
+############################
+
+# pick_refs.py's spike-in genome pool: the 103 accessions from the
+# VirFinder/INPHARED pre-2014 overlap list (106 total,
+# in_inphared_and_virfinder_pre2014) confirmed present in kraken2_pluspfp's
+# seqid2taxid.map -- written by the archived
+# scripts/archive/check_kraken2_accessions.sh. Each accession is its own
+# single-record FASTA file in INPHARED_GENOMES_DIR.
+INPHARED_ACCESSIONS_LIST = PROJECT_ROOT / "data" / "accessions_in_kraken2.txt"
+INPHARED_GENOMES_DIR = Path(
+    "/rs1/shares/brc/databases/inphared/genomes_in_inphared_and_virfinder_pre2014"
+)
+
+############################
+# Kraken2 (check gate)
 ############################
 
 KRAKEN2_DB = Path("/rs1/shares/brc/admin/databases/kraken2_pluspfp")

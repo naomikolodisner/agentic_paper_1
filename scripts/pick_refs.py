@@ -6,7 +6,6 @@ import random
 import sys
 from pathlib import Path
 from Bio import SeqIO
-import pandas
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
@@ -14,11 +13,12 @@ import config
 # choose a random seed to reproduce this later
 random.seed(41)
 
-# This is the list of reference genomes we can choose from
-references_meta = pandas.read_csv(config.AVRC_METADATA_CSV, sep=',', comment='#')
-contig_ids = list(references_meta['contig_id'])
-
-fasta_index = SeqIO.index(str(config.AVRC_ALL_SEQUENCES), "fasta")
+# This is the list of reference genomes we can choose from -- the 103
+# INPHARED/VirFinder-overlap accessions confirmed present in kraken2's DB
+# (config.INPHARED_ACCESSIONS_LIST). Each accession is its own single-record
+# FASTA file in config.INPHARED_GENOMES_DIR.
+with open(config.INPHARED_ACCESSIONS_LIST) as f:
+    contig_ids = [line.strip() for line in f if line.strip()]
 
 config.SPIKE_IN_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -36,7 +36,9 @@ for subset_size in config.VIRAL_SUBSET_SIZES:
         out_fasta = out_dir / "contigs.fasta"
         with open(out_fasta, "w") as f:
             for ref in refs:
-                if ref in fasta_index:
-                    SeqIO.write(fasta_index[ref], f, "fasta")
+                genome_file = config.INPHARED_GENOMES_DIR / f"{ref}.fasta"
+                if genome_file.exists():
+                    record = next(SeqIO.parse(str(genome_file), "fasta"))
+                    SeqIO.write(record, f, "fasta")
                 else:
-                    print(f"Warning: {ref} not found in {config.AVRC_ALL_SEQUENCES}")
+                    print(f"Warning: {ref} not found in {config.INPHARED_GENOMES_DIR}")

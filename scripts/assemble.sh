@@ -3,7 +3,7 @@
 # assemble.sh
 #
 # Assembles spike-in FASTQ files into contigs using MegaHit, producing an
-# assembly.fa alongside each dist/percentage tier's final FASTQ. This is the
+# assembly.fa alongside each percentage tier's final FASTQ. This is the
 # final step in spike-in sample creation and makes the data usable by viral
 # detection tools.
 #
@@ -16,7 +16,7 @@
 #   - Minimum contig length: 1000 bp
 #
 # Output: assembly.fa alongside each final.1.fq.gz / final.2.fq.gz pair
-#   e.g. data/spike_in_samples/sample_10v_3/lognormal/spike_1pct/assembly.fa
+#   e.g. data/spike_in_samples/sample_10v_3/spike_1pct/assembly.fa
 #
 # The script is idempotent — it skips any sample that already has assembly.fa.
 #
@@ -36,6 +36,8 @@
 #SBATCH --mem=120G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=nkolodi@ncsu.edu
 
 echo "Job started at $(date)"
 echo "Array JobID: $SLURM_ARRAY_JOB_ID  Task: $SLURM_ARRAY_TASK_ID  Node: $(hostname)"

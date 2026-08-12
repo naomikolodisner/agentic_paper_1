@@ -3,10 +3,12 @@
 Concatenate two paired FASTQ read sets (viral spike-in + background) and
 shuffle them together into a single mixed sample.
 
-Replaces the old gen_titration_sample.py now that InSilicoSeq (not ART) drives
-both the background and viral spike-in generation: both sides already have
-exact, pre-computed read counts and a matching read length (same --model), so
-there is no more depth math or seqtk subsampling to do here -- this is a pure
+Replaces the old gen_titration_sample.py now that background reads come from
+InSilicoSeq (scripts/generate_background.sh) and viral spike-in reads from
+ART Illumina (scripts/read_mixing.sh), both simulated at the same read length
+(read_mixing.sh forces ART's -l to match the chosen background row's measured
+length) with exact, pre-computed read counts on both sides, so there is no
+more depth math or seqtk subsampling to do here -- this is a pure
 shuffle-merge.
 """
 
