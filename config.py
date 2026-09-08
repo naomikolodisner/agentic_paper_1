@@ -25,9 +25,7 @@ LOG_DIR = PROJECT_ROOT / "logs"
 
 XFILE = "xad"
 XFILE_DIR = PROJECT_ROOT / "data" / "sample_lists"
-SPADES_DIR = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "assemblies"
-BACKGROUND_ASSEMBLIES = PROJECT_ROOT / "data" / "background_assemblies"
-CONTIG_IDENTITIES = PROJECT_ROOT / "data" / "set3_simulated_metagenomes" / "contig_identities.csv"
+BACKGROUND_ASSEMBLIES = PROJECT_ROOT / "data" / "archive" / "background_assemblies"
 SPIKE_IN_DIR = PROJECT_ROOT / "data" / "spike_in_samples"
 
 ############################
@@ -36,51 +34,12 @@ SPIKE_IN_DIR = PROJECT_ROOT / "data" / "spike_in_samples"
 
 ISS_BIN = BASE / "nkolodi" / "conda_envs" / "insilicoseq" / "bin" / "iss"
 
-# Directory of PHORAGER's prophage-stripped HumGut MAGs -- one FASTA file per
-# MAG (each may be multi-contig). PHORAGER has not been run on HumGut yet
-# (HumGut is currently just the downloaded tar at
-# /rs1/shares/brc/admin/databases/HumGut/HumGut2.tar; PHORAGER itself lives at
-# /rs1/researchers/b/blhurwit/work/PHORAGER). Update HUMGUT_RAW_MAGS_DIR usage
-# in generate_background.sh to this dir once that run completes -- for now
-# background is generated from raw (prophage-intact) HumGut MAGs instead.
-#
 # IMPORTANT: ISS's --draft treats each FILE passed to it as one genome (a
-# single multi-record FASTA of many MAGs concatenated together would be
-# wrongly treated as ONE organism) -- verified empirically 2026-07-07. This
-# must stay a directory of one-file-per-MAG, globbed and passed as multiple
-# --draft arguments by generate_background.sh.
-HUMGUT_PROPHAGE_REMOVED_DIR = DB_ROOT / "HumGut" / "prophage_removed"
+# single multi-record FASTA of many genomes concatenated together would be
+# wrongly treated as ONE organism) -- verified empirically 2026-07-07. Any
+# background-generation script must pass a directory of one-file-per-genome,
+# globbed and passed as multiple --draft arguments.
 HUMGUT_MAG_GLOB = "*.fasta"
-
-# Raw HumGut MAG source (prophages intact) -- extracted by
-# scripts/extract_humgut_subset.py from the tarball below into one plain
-# FASTA per genome in HUMGUT_RAW_MAGS_DIR, since HumGut2.tar has never been
-# extracted (only the tar + its manifest TSV exist on disk). HumGut2.tsv has
-# ~31,226 genome rows total; HUMGUT_SUBSET_N controls how many of those are
-# extracted for use as background draft genomes (fixed seed => reproducible).
-HUMGUT_TAR = Path("/rs1/shares/brc/admin/databases/HumGut/HumGut2.tar")
-HUMGUT_TSV = Path("/rs1/shares/brc/admin/databases/HumGut/HumGut2.tsv")
-HUMGUT_SUBSET_N = 500
-HUMGUT_SUBSET_SEED = 42
-HUMGUT_RAW_MAGS_DIR = DB_ROOT / "HumGut" / "raw_subset"
-
-BACKGROUND_ISS_DIR = PROJECT_ROOT / "data" / "background_iss"
-BACKGROUND_MANIFEST = BACKGROUND_ISS_DIR / "manifest.tsv"
-
-# Only hiseq and novaseq are usable for the ART-driven spike-in step: ISS's
-# miseq/nextseq models both measure ~301bp reads, which exceed every ART
-# built-in profile (largest is MSv3 at 250bp) -- see ART_PROFILE_BY_MODEL /
-# ART_PROFILE_MAX_LEN below. generate_background.sh loads this list directly
-# (single source of truth) rather than hardcoding its own MODELS array.
-ISS_MODELS = ["hiseq", "novaseq"]
-
-# Background grid: 2 distributions (a "typical" lognormal community and a
-# skewed "abnormal" one -- a few genomes very abundant, most very low) x 1
-# read depth. BACKGROUND_N_READS is deliberately a list (not a scalar) so
-# adding a shallower depth later (e.g. "0.1M") just grows the grid -- the
-# nested-loop combo builder in generate_background.sh doesn't change.
-BACKGROUND_ABUNDANCE_DISTS = ["lognormal", "exponential"]
-BACKGROUND_N_READS = ["1M"]  # 1M total reads (R1+R2) = 500k read pairs
 
 # Spike-in grid: random subset of viral genomes per sample, spiked at a total
 # read-fraction percentage. No ISS abundance distribution is used for
@@ -93,7 +52,16 @@ BACKGROUND_N_READS = ["1M"]  # 1M total reads (R1+R2) = 500k read pairs
 # its own copy, and builds every percentage against every ART-compatible
 # background row (exhaustive, not a random per-combo draw) -- so each sample
 # dir gets len(SPIKE_PERCENTAGES) x (usable background rows) output combos.
-VIRAL_SUBSET_SIZES = [5, 10, 20]
+#
+# VIRAL_SUBSET_SIZES was originally [5, 10, 20] -- a small controlled
+# diversity-scaling grid, unrelated to real viral community size. Replaced
+# with realistic values after dereplicating/clustering the actual viral
+# contigs found in the FMT samples (~80-150 distinct viruses per sample,
+# down from ~900-1700 raw contigs pre-clustering). The INPHARED pool was
+# expanded from 103 to 408 accessions (see INPHARED_ACCESSIONS_LIST above)
+# specifically so subsets this large still draw from well under the full
+# pool, keeping replicate draws independent.
+VIRAL_SUBSET_SIZES = [80, 115, 150]
 SPIKE_PERCENTAGES = [0.01, 0.05, 0.10]
 NUM_REPLICATES_PER_SUBSET_SIZE = 1
 
@@ -246,16 +214,45 @@ AVRC_METADATA_CSV = ANNOTATIONS / "AvRCv1.Merged_ViralDesc.csv"
 # INPHARED spike-in genome catalog
 ############################
 
-# pick_refs.py's spike-in genome pool: the 103 accessions from the
-# VirFinder/INPHARED pre-2014 overlap list (106 total,
-# in_inphared_and_virfinder_pre2014) confirmed present in kraken2_pluspfp's
-# seqid2taxid.map -- written by the archived
-# scripts/archive/check_kraken2_accessions.sh. Each accession is its own
-# single-record FASTA file in INPHARED_GENOMES_DIR.
+# pick_refs.py's spike-in genome pool: every accession in the current full
+# INPHARED catalog (~2902 genomes, /rs1/shares/brc/databases/inphared/
+# all_genomes.txt) confirmed present in kraken2_pluspfp's seqid2taxid.map --
+# written by scripts/check_kraken2_accessions.py (408 as of the last run;
+# supersedes the smaller 103-accession VirFinder/INPHARED pre-2014-overlap
+# pool and its archived scripts/archive/check_kraken2_accessions.sh). Each
+# accession is its own single-record FASTA file in INPHARED_GENOMES_DIR.
 INPHARED_ACCESSIONS_LIST = PROJECT_ROOT / "data" / "accessions_in_kraken2.txt"
-INPHARED_GENOMES_DIR = Path(
-    "/rs1/shares/brc/databases/inphared/genomes_in_inphared_and_virfinder_pre2014"
-)
+INPHARED_GENOMES_DIR = Path("/rs1/shares/brc/databases/inphared/GenomesDB")
+
+############################
+# Archived (superseded, not read by the active pipeline)
+############################
+
+# Old tool-benchmarking ground truth (Set3 simulated metagenomes). No longer
+# used for anything -- the new FMT-derived datasets built by the current
+# pipeline are the ground truth going forward. Kept pointed at its actual
+# archived location (data/archive/set3_simulated_metagenomes/) rather than
+# deleted, per this project's convention of retaining superseded artifacts.
+SPADES_DIR = PROJECT_ROOT / "data" / "archive" / "set3_simulated_metagenomes" / "assemblies"
+CONTIG_IDENTITIES = PROJECT_ROOT / "data" / "archive" / "set3_simulated_metagenomes" / "contig_identities.csv"
+
+# Old raw-HumGut-subset background generation (scripts/archive/generate_background.sh
+# + scripts/archive/extract_humgut_subset.py), driven by a built-in ISS
+# abundance distribution (lognormal/exponential) rather than a real profile.
+# Superseded by the FMT-profile-driven background (see the active
+# "FMT-derived background" config section). Output already moved to
+# data/archive/background_iss/.
+HUMGUT_PROPHAGE_REMOVED_DIR = DB_ROOT / "HumGut" / "prophage_removed"
+HUMGUT_TAR = Path("/rs1/shares/brc/admin/databases/HumGut/HumGut2.tar")
+HUMGUT_TSV = Path("/rs1/shares/brc/admin/databases/HumGut/HumGut2.tsv")
+HUMGUT_SUBSET_N = 500
+HUMGUT_SUBSET_SEED = 42
+HUMGUT_RAW_MAGS_DIR = DB_ROOT / "HumGut" / "raw_subset"
+BACKGROUND_ISS_DIR = PROJECT_ROOT / "data" / "archive" / "background_iss"
+BACKGROUND_MANIFEST = BACKGROUND_ISS_DIR / "manifest.tsv"
+ISS_MODELS = ["hiseq", "novaseq"]
+BACKGROUND_ABUNDANCE_DISTS = ["lognormal", "exponential"]
+BACKGROUND_N_READS = ["1M"]  # 1M total reads (R1+R2) = 500k read pairs
 
 ############################
 # Kraken2 (check gate)
