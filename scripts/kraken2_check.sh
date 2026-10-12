@@ -66,7 +66,7 @@ PYTHON_BIN="/rs1/researchers/b/blhurwit/users/nkolodi/conda_envs/test_env/bin/py
 SPIKE_IN_DIR="$PROJECT/data/spike_in_samples"
 KRAKEN2_SIF="/rs1/shares/brc/admin/containers/images/quay.io_biocontainers_kraken2:2.17.1--pl5321h077b44d_0.sif"
 KRAKEN2_DB="/rs1/shares/brc/admin/databases/kraken2_pluspfp"
-OUT_DIR="$PROJECT/results/00_kraken2_check"
+OUT_DIR="$PROJECT/dataset_creation/kraken2_check"
 
 mkdir -p "$PROJECT/logs/slurm" "$OUT_DIR"
 module load apptainer/1.4.2-1
@@ -82,16 +82,18 @@ if [ ! -d "$KRAKEN2_DB" ]; then
     exit 1
 fi
 
-mapfile -t SAMPLE_DIRS < <(find "$SPIKE_IN_DIR" -mindepth 1 -maxdepth 1 -type d -name 'sample_*v_*' | sort)
+# Sample dirs = every dir pick_refs.py wrote a conditions.tsv into (either
+# design: {single,equal2,...}/sample{n}/ or sample_{size}v_{n}/)
+mapfile -t SAMPLE_DIRS < <(find "$SPIKE_IN_DIR" -name conditions.tsv -printf '%h\n' | sort)
 if [ "${#SAMPLE_DIRS[@]}" -eq 0 ]; then
-    echo "ERROR: no sample_<size>v_<n> directories found in $SPIKE_IN_DIR."
+    echo "ERROR: no sample dirs with a conditions.tsv found under $SPIKE_IN_DIR."
     echo "Run scripts/pick_refs.py first."
     exit 1
 fi
 
-mapfile -t REF_IDS < <(cat "$SPIKE_IN_DIR"/sample_*v_*/refs_log.txt 2>/dev/null | sort -u)
+mapfile -t REF_IDS < <(for d in "${SAMPLE_DIRS[@]}"; do cat "$d/refs_log.txt"; done 2>/dev/null | sort -u)
 if [ "${#REF_IDS[@]}" -eq 0 ]; then
-    echo "ERROR: no refs_log.txt found under $SPIKE_IN_DIR/sample_*v_*/."
+    echo "ERROR: no refs_log.txt found in any sample dir under $SPIKE_IN_DIR."
     echo "Run scripts/pick_refs.py first."
     exit 1
 fi
@@ -110,7 +112,7 @@ printf '%s\n' "${REF_IDS[@]}" > "$TMPDIR/ref_ids.txt"
 
 ALL_FINAL_FILES=()
 for sample_dir in "${SAMPLE_DIRS[@]}"; do
-    sample_name=$(basename "$sample_dir")
+    sample_name="${sample_dir#$SPIKE_IN_DIR/}"
 
     mapfile -t FINAL_FILES < <(find "$sample_dir" -name 'final.1.fq.gz' | sort)
     if [ "${#FINAL_FILES[@]}" -eq 0 ]; then
