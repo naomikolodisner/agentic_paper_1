@@ -810,3 +810,24 @@ Dead-code cleanup, same day:
 - **Deleted `config.sh`.** It was a stale shell copy of the config with pre-Hazel paths
   (`/xdisk/gwatts/...`, `/groups/gwatts/databases`) and nothing sourced it. It's still in git
   history.
+
+## 2026-10-28
+
+Nextflow port, kraken2 process (step 01):
+
+- **`mock_datasets/nextflow/kraken2.nf`** now has a `kraken2` process that does what
+  `01_kraken2_fmt_reads.sh` does: `kraken2 --paired --use-names` against the HumGut DB, writing
+  `<sampleid>.kraken` + `<sampleid>.report` (same names as the sbatch script, so `03_bracken_run.sh`'s
+  expectations carry over). Formatted to the hurwitzlab `nextflow_process_library` conventions
+  (`modules/CLAUDE.md`): `process_high` + `publish_final` labels, `container
+  "${params.container__kraken2}"`, `tuple val(sampleid), path(r1), path(r2)` + separate
+  `path(kraken2_db)` input, single `emit: classification`, `shell:` with `!{}`, threads from
+  `task.cpus`.
+- The sbatch script's sample-list loop, config lookups and skip-if-report-exists check are left to
+  the workflow (channel from `config.FMT_READS_SAMPLE_LIST` / `FMT_READS_DIR`; Nextflow `-resume`).
+  Consuming pipeline must define `params.container__kraken2` and `params.kraken2_outdir`.
+- Not run or linted yet.
+- Simplified `01_kraken2_fmt_reads.sh` (~105 → 55 lines): cut the long header history (the
+  contig-vs-reads backstory is already in CLAUDE.md and earlier entries), folded the four config
+  lookups into one `cfg` helper, dropped the progress echoes and the out-of-range array check.
+  Same kraken2 command and outputs. `bash -n` passes, not re-run.
