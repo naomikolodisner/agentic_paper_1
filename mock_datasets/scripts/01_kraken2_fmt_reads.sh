@@ -63,26 +63,7 @@ OUT_DIR=$("$PYTHON_BIN" -c "import sys; sys.path.insert(0, '$PROJECT'); import c
 
 mkdir -p "$PROJECT/logs/slurm" "$OUT_DIR"
 
-# --- Validate prerequisites ---------------------------------------------------
-
-if [ ! -x "$KRAKEN2_BIN" ]; then
-    echo "ERROR: kraken2 binary not found/executable at $KRAKEN2_BIN"
-    exit 1
-fi
-if [ ! -f "$KRAKEN2_DB/hash.k2d" ]; then
-    echo "ERROR: kraken2 DB not found/incomplete at $KRAKEN2_DB (missing hash.k2d)"
-    exit 1
-fi
-if [ ! -f "$SAMPLE_LIST" ]; then
-    echo "ERROR: sample list not found at $SAMPLE_LIST"
-    exit 1
-fi
-
 mapfile -t SAMPLES < "$SAMPLE_LIST"
-if [ "${#SAMPLES[@]}" -eq 0 ]; then
-    echo "ERROR: $SAMPLE_LIST is empty."
-    exit 1
-fi
 
 TASK_ID="${SLURM_ARRAY_TASK_ID:-0}"
 if [ "$TASK_ID" -ge "${#SAMPLES[@]}" ]; then
@@ -94,10 +75,6 @@ echo "Sample: $SAMPLE"
 
 READ1="$READS_DIR/${SAMPLE}_1.fastq.gz"
 READ2="$READS_DIR/${SAMPLE}_2.fastq.gz"
-if [ ! -f "$READ1" ] || [ ! -f "$READ2" ]; then
-    echo "ERROR: paired reads not found for $SAMPLE ($READ1 / $READ2)"
-    exit 1
-fi
 
 SAMPLE_OUT="$OUT_DIR/$SAMPLE"
 mkdir -p "$SAMPLE_OUT"
