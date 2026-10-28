@@ -1,5 +1,4 @@
 # Agentic Viral Benchmarking
-Agentic Benchmarking - Naomi, Mery, & Bonnie Spring 2026
 
 ## Overview
 
