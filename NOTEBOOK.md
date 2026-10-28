@@ -717,3 +717,96 @@ eventually like larger subsets but chose to replicate the original exactly for n
 
 Next: `scripts/kraken2_check.sh` gate on these 20 samples, then the assembly work list and
 `assemble.sh`.
+
+## 2026-10-24
+
+Cleanup pass, plus a workflow diagram of mock-dataset creation (Mermaid, for the Nextflow
+integration project; kept outside the repo).
+
+- **Deleted `data/spike_in_samples/sample_{80,115,150}v_1/`** (22 MB, picks only, no reads) at
+  the user's direction. They were left over from the subsets design and had no `conditions.tsv`.
+- **Archived `scripts/submit_pipeline.sh`** to `scripts/archive/`. It chained the retired
+  `generate_background.sh` and percentage design, and the Nextflow port will replace job
+  chaining. `assemble.sh` used to say the work list came from it, so its header and error
+  message now give the one-line `find ... -name final.1.fq.gz | sort` command instead. Also
+  reworded the matching comment in `kraken2_check.sh`.
+- **`FMT_BACKGROUND_REPLICATES` 3 → 1.** Only rep1 was ever generated. The manifest's seeds
+  (1000/1001/1002 for 703/704/705) are exactly what a 1-replicate run assigns, so the
+  backgrounds were built at 1. Updated `generate_background_fmt.sh`'s header (`--array=0-2`).
+- **The "kraken2_pluspfp" DB is really PlusPF, 16 GB capped, 2025-10-15**
+  (`k2_pluspf_16_GB_20251015.tar.gz`; `library_report.tsv` has no plant library). Noted in
+  CLAUDE.md; use that name in methods.
+- **`check_kraken2_accessions.py` does no classification.** It only matches INPHARED accession
+  IDs (`all_genomes.txt`) against `seqid2taxid.map`.
+- **`viral_spike_helper.py` is QC only** in the og design. `log-actual-coverage` writes
+  `coverage_log.txt`, which nothing downstream reads. `total-reads` / `weighted-coverage-plan`
+  are unused (retired percentage design).
+- **CLAUDE.md:** rewrote the dataset-prep run commands and the spike-in description for
+  `--design og`, and updated the data and key-file tables.
+- **Human-read removal of the 703–705 FMT reads** was done upstream by someone else. The
+  bowtie2/CHM13 comments in `config.py` / `kraken2_fmt_reads.sh` were left as they are.
+
+Next: `scripts/kraken2_check.sh` on the 20 og conditions (the `dataset_creation/kraken2_check/`
+output is from 2026-07-21, old samples), then the assembly work list and `assemble.sh`.
+
+## 2026-10-27
+
+Reorganized the repo into two pipelines. Only code moved (`git mv`, history kept); no data moved.
+
+- **`dataset_creation/`** is the mock-dataset pipeline (complete). All of `scripts/`, including
+  `scripts/archive/`, is now `dataset_creation/scripts/`, next to the existing outputs
+  (`kraken2_fmt_reads/`, `fmt_abundance_profiles/`, `kraken2_check/`, ...). `.gitignore` used to
+  ignore all of `dataset_creation/`; it now ignores only the outputs and tracks `scripts/`.
+- **`agentic_benchmarking/`** is the agentic pipeline (in progress). It holds `pipeline/`,
+  `run_viral_detection.sh`, `archive/agentic_viral_benchmark.py` and `scripts/CheckV_parser.R`.
+  Run it from `agentic_benchmarking/` (`python -m pipeline.coordinator`). The sbatch wrapper
+  now `cd`s there.
+- **Shared, left at the root:** `config.py`, `data/` (holds the spike-in samples, which are the
+  output of dataset_creation and the input to the benchmark), `results/` (41G), `logs/`.
+- **Path fixes:** every moved Python file's `sys.path` root went up one `.parent`, so
+  `import config` still resolves. `$PROJECT/scripts/` became `$PROJECT/dataset_creation/scripts/`
+  in the sbatch scripts. `config.CHECKV_PARSER` was repointed. Script mentions in comments,
+  CLAUDE.md and README.md were updated. The archived `generate_background.sh` was already
+  pointing at the wrong path for `extract_humgut_subset.py`; it now points at `archive/`.
+- **Checked:** `bash -n` passes on every .sh. `--help` works for each dataset_creation Python
+  script. `import pipeline.coordinator` works from `agentic_benchmarking/` in `academy_py311`.
+  `CHECKV_PARSER` resolves. Nothing was re-run.
+
+Next: the Nextflow port of dataset_creation (on hold for now).
+
+Follow-up, same day: both pipelines now share one layout. This supersedes the
+`dataset_creation/` paths in the entry above.
+
+- **`dataset_creation/` was renamed `mock_datasets/`.** Both pipelines now use `scripts/`,
+  `archive/`, `results/` and a `README.md`. `agentic_benchmarking/` also keeps its `pipeline/`
+  package, and `run_viral_detection.sh` moved into its `scripts/`.
+- **Data moved (same-filesystem renames, at the user's direction):** root `results/` →
+  `agentic_benchmarking/results/` (`config.RESULTS_ROOT`). The dataset outputs (`kraken2_fmt*/`,
+  `kraken2_check/`, `fmt_abundance_profiles/`, `representative_genomes.tsv`) went to
+  `mock_datasets/results/` (`config.OUT_*`). No stored file referenced the old paths.
+- **`mock_datasets/scripts/` holds only the steps that are actually run, numbered in run order:**
+  `01_kraken2_fmt_reads.sh` … `07_generate_background_fmt.sh` build the background, and
+  `08_check_kraken2_accessions.py` … `12_assemble.sh` build the spike-ins. Scripts that a step
+  calls but that are never run on their own are in `scripts/helpers/` (`extract_humgut_phoraged.py`,
+  `viral_spike_helper.py`, `combine_reads.py`). Retired scripts moved to `mock_datasets/archive/`
+  (was `scripts/archive/`). The order, submit commands and outputs are in `mock_datasets/README.md`.
+- The root README is now a short overview of the two pipelines. The old one became
+  `agentic_benchmarking/README.md`. `.gitignore` dropped the `dataset_creation/*` special case,
+  since the existing `results/` rule already ignores both `results/` dirs.
+- **Checked:** `bash -n` passes on all .sh. `--help` works for each Python step and helper.
+  Every Python file's `sys.path` root resolves to `config.py`. Every `$PROJECT/...` script path
+  inside the sbatch scripts exists. All `config.OUT_*`, `RESULTS_ROOT` and `CHECKV_PARSER` paths
+  exist. `import pipeline.coordinator` works. Nothing was re-run.
+
+Dead-code cleanup, same day:
+
+- **`viral_spike_helper.py`** now has only `log-actual-coverage`, the one subcommand
+  `10_read_mixing.sh` calls. The retired percentage design's `total-reads` and
+  `weighted-coverage-plan` were removed, along with the helper's `config` import, which only they
+  needed. `config.SPIKE_PERCENTAGES` and `config.ART_RATIO_WEIGHTS` were removed too; only those
+  subcommands read them. Checked by re-running the trimmed helper on
+  `unequal3/sample1/10x_1x_0.5x`'s pair counts: the output is identical to the existing
+  `coverage_log.txt`.
+- **Deleted `config.sh`.** It was a stale shell copy of the config with pre-Hazel paths
+  (`/xdisk/gwatts/...`, `/groups/gwatts/databases`) and nothing sourced it. It's still in git
+  history.

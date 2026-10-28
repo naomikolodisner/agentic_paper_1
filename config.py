@@ -8,7 +8,7 @@ import shutil
 
 BASE = Path("/rs1/researchers/b/blhurwit/users")
 PROJECT_ROOT = BASE / "nkolodi" / "agentic_paper_1"
-RESULTS_ROOT = PROJECT_ROOT / "results"
+RESULTS_ROOT = PROJECT_ROOT / "agentic_benchmarking" / "results"
 DB_ROOT = BASE / "nkolodi" / "databases"
 TOOL_ROOT = BASE / "nkolodi" / "tools"
 
@@ -43,9 +43,9 @@ HUMGUT_MAG_GLOB = "*.fasta"
 
 # Spike-in grid: random subset of viral genomes per sample, each genome
 # spiked in at the SAME fixed ART fold coverage ("plain" spike-in, like the
-# original scripts/archive/create_single_equal_samples.sh equal-coverage
+# original mock_datasets/archive/create_single_equal_samples.sh equal-coverage
 # design) -- one SPIKE_COVERAGES value per output combo, applied identically
-# to every genome in the subset. read_mixing.sh loads SPIKE_COVERAGES
+# to every genome in the subset. 10_read_mixing.sh loads SPIKE_COVERAGES
 # directly (single source of truth) and builds every coverage against every
 # ART-compatible background row (exhaustive), so each sample dir gets
 # len(SPIKE_COVERAGES) x (usable background rows) output combos. The
@@ -66,13 +66,13 @@ VIRAL_SUBSET_SIZES = [80, 115, 150]
 SPIKE_COVERAGES = [0.1, 0.5, 1, 10]
 
 # "OG" spike-in design -- an exact replica of the PI's original ART scripts
-# (scripts/archive/create_single_equal_samples.sh,
+# (mock_datasets/archive/create_single_equal_samples.sh,
 # create_unequal_samples_slurm.sh; output in data/archive/{single,equal2,...}/),
 # but with genomes drawn fresh from the INPHARED pool and the FMT background.
 # Each type: n_viruses genomes per sample, SPIKE_OG_REPLICATES samples, and a
 # set of named conditions, each a list of per-genome ART -f coverages (in
-# contigs.fasta order). pick_refs.py --design og writes these to each sample
-# dir's conditions.tsv; read_mixing.sh builds one output dir per condition.
+# contigs.fasta order). 09_pick_refs.py --design og writes these to each sample
+# dir's conditions.tsv; 10_read_mixing.sh builds one output dir per condition.
 SPIKE_OG_REPLICATES = 1  # PI's original used 15; 1 for initial testing
 _EQUAL_CONDITIONS = lambda n: {f"{c:g}x": [c] * n for c in SPIKE_COVERAGES}
 SPIKE_OG_DESIGNS = {
@@ -85,10 +85,6 @@ SPIKE_OG_DESIGNS = {
     "unequal3": {"n_viruses": 3, "conditions": {"10x_1x_0.5x": [10, 1, 0.5],
                                                 "1x_0.5x_0.1x": [1, 0.5, 0.1]}},
 }
-# UNUSED since 2026-10-06 (read_mixing.sh switched from a percentage-driven,
-# ART_RATIO_WEIGHTS-split read budget to fixed per-genome coverage) -- kept
-# so viral_spike_helper.py's total-reads/weighted-coverage-plan still work.
-SPIKE_PERCENTAGES = [0.01, 0.05, 0.10]
 NUM_REPLICATES_PER_SUBSET_SIZE = 1
 
 ############################
@@ -99,21 +95,13 @@ ART_BIN = BASE / "nkolodi" / "conda_envs" / "test_env" / "bin" / "art_illumina"
 ART_FRAGMENT_MEAN = 200
 ART_FRAGMENT_SD = 10
 
-# Cycled across a sample's genome subset in order (genome 1 -> 10, genome 2 ->
-# 1, genome 3 -> 0.5, genome 4 -> 0.1, genome 5 -> 10 again, ...) -- the same
-# absolute coverage values scripts/archive/create_single_equal_samples.sh and
-# scripts/archive/create_unequal_samples_slurm.sh used directly, reused here
-# as relative weights that split the pct-derived total viral read budget
-# unevenly instead of equally. UNUSED since 2026-10-06 (see SPIKE_COVERAGES).
-ART_RATIO_WEIGHTS = [10, 1, 0.5, 0.1]
-
 # ART has no native NovaSeq quality profile (confirmed via `art_illumina
 # --help`); MSv3 is used as the closest available fallback -- ISS's novaseq
 # model measures 151bp reads (verified by loading the model directly), which
 # is 1bp over HS25's 150bp cap but comfortably under MSv3's 250bp one.
 # Profile max supported read lengths: HS25 <=150bp, MSv3 <=250bp, NS50
 # <=75bp -- if a background model's actual ISS-measured read length exceeds
-# its mapped profile's cap, read_mixing.sh filters out that background row
+# its mapped profile's cap, 10_read_mixing.sh filters out that background row
 # rather than invoking ART with an incompatible length.
 ART_PROFILE_BY_MODEL = {
     "hiseq": "HS25",
@@ -133,7 +121,7 @@ ART_PROFILE_MAX_LEN = {
 
 OUT_CHECKV = RESULTS_ROOT / "02_checkv"
 CHECKVDB = DB_ROOT / "checkv-db-v1.5"
-CHECKV_PARSER = PROJECT_ROOT / "scripts" / "CheckV_parser.R"
+CHECKV_PARSER = PROJECT_ROOT / "agentic_benchmarking" / "scripts" / "CheckV_parser.R"
 PARSE_LENGTH = 5000
 
 # VirSorter2
@@ -204,7 +192,7 @@ OUT_CLUSTER = RESULTS_ROOT / "04_cluster"
 
 DB_DIR = DB_ROOT / "AVrC"
 MAX_DB_SIZE = "0.5GB"
-# No longer used by pick_refs.py (superseded by INPHARED_* below) -- kept
+# No longer used by 09_pick_refs.py (superseded by INPHARED_* below) -- kept
 # since DB_DIR/ANNOTATIONS (same AVrC database) still back the BLAST
 # annotation step in pipeline/coordinator.py.
 AVRC_ALL_SEQUENCES = DB_DIR / "AVrC_allsequences.fasta"
@@ -233,8 +221,8 @@ BLAST_HITS = (
 ANNOTATIONS = DB_ROOT / "AVrC" / "database_csv"
 OUTPUT = RESULTS_ROOT / "05_annotate"  # was 06_annotate -- renumbered after
                                        # kraken2_fmt/kraken2_check moved out
-                                       # of results/ into dataset_creation/
-# No longer used by pick_refs.py (see INPHARED_ACCESSIONS_LIST below) -- kept
+                                       # of results/ into mock_datasets/
+# No longer used by 09_pick_refs.py (see INPHARED_ACCESSIONS_LIST below) -- kept
 # for the BLAST annotation step, which is unrelated to spike-in genome choice.
 AVRC_METADATA_CSV = ANNOTATIONS / "AvRCv1.Merged_ViralDesc.csv"
 
@@ -242,12 +230,12 @@ AVRC_METADATA_CSV = ANNOTATIONS / "AvRCv1.Merged_ViralDesc.csv"
 # INPHARED spike-in genome catalog
 ############################
 
-# pick_refs.py's spike-in genome pool: every accession in the current full
+# 09_pick_refs.py's spike-in genome pool: every accession in the current full
 # INPHARED catalog (~2902 genomes, /rs1/shares/brc/databases/inphared/
 # all_genomes.txt) confirmed present in kraken2_pluspfp's seqid2taxid.map --
-# written by scripts/check_kraken2_accessions.py (408 as of the last run;
+# written by mock_datasets/scripts/08_check_kraken2_accessions.py (408 as of the last run;
 # supersedes the smaller 103-accession VirFinder/INPHARED pre-2014-overlap
-# pool and its archived scripts/archive/check_kraken2_accessions.sh). Each
+# pool and its archived mock_datasets/archive/check_kraken2_accessions.sh). Each
 # accession is its own single-record FASTA file in INPHARED_GENOMES_DIR.
 INPHARED_ACCESSIONS_LIST = PROJECT_ROOT / "data" / "accessions_in_kraken2.txt"
 INPHARED_GENOMES_DIR = Path("/rs1/shares/brc/databases/inphared/GenomesDB")
@@ -264,8 +252,8 @@ INPHARED_GENOMES_DIR = Path("/rs1/shares/brc/databases/inphared/GenomesDB")
 SPADES_DIR = PROJECT_ROOT / "data" / "archive" / "set3_simulated_metagenomes" / "assemblies"
 CONTIG_IDENTITIES = PROJECT_ROOT / "data" / "archive" / "set3_simulated_metagenomes" / "contig_identities.csv"
 
-# Old raw-HumGut-subset background generation (scripts/archive/generate_background.sh
-# + scripts/archive/extract_humgut_subset.py), driven by a built-in ISS
+# Old raw-HumGut-subset background generation (mock_datasets/archive/generate_background.sh
+# + mock_datasets/archive/extract_humgut_subset.py), driven by a built-in ISS
 # abundance distribution (lognormal/exponential) rather than a real profile.
 # Superseded by the FMT-profile-driven background (see the active
 # "FMT-derived background" config section). Output already moved to
@@ -313,13 +301,13 @@ FMT_ASSEMBLIES_DIR = BASE / "nkolodi" / "fmt_viruses" / "out_spades"
 # only have a SPAdes assembly on Hazel (their raw reads lived on a now-
 # inaccessible external /xdisk cluster), so this classified contigs.fasta
 # weighted by SPAdes coverage as a depth proxy. Its script (now
-# scripts/archive/kraken2_fmt.sh, moved 2026-09-22) and output are kept --
+# mock_datasets/archive/kraken2_fmt.sh, moved 2026-09-22) and output are kept --
 # still valid, just not the sample set going forward.
 FMT_SAMPLE_LIST = XFILE_DIR / "xac"
 
-# Lives under dataset_creation/, not RESULTS_ROOT -- this is a dataset-prep
+# Lives under mock_datasets/, not RESULTS_ROOT -- this is a dataset-prep
 # output (feeds the FMT abundance profile), not an agentic-workflow stage.
-OUT_KRAKEN2_FMT = PROJECT_ROOT / "dataset_creation" / "kraken2_fmt"
+OUT_KRAKEN2_FMT = PROJECT_ROOT / "mock_datasets" / "results" / "kraken2_fmt"
 
 # Read-based pass (preferred going forward): ERR2198703-705 have their
 # actual host(human)-decontaminated raw paired reads sitting on Hazel
@@ -332,23 +320,23 @@ OUT_KRAKEN2_FMT = PROJECT_ROOT / "dataset_creation" / "kraken2_fmt"
 # directly -- not yet decided/built as of this comment.
 FMT_READS_DIR = BASE / "nkolodi" / "fmt_viruses" / "03_contam_removal"
 FMT_READS_SAMPLE_LIST = XFILE_DIR / "xae"
-OUT_KRAKEN2_FMT_READS = PROJECT_ROOT / "dataset_creation" / "kraken2_fmt_reads"
+OUT_KRAKEN2_FMT_READS = PROJECT_ROOT / "mock_datasets" / "results" / "kraken2_fmt_reads"
 
 # HumGut's own manifest -- our kraken2 DB's taxid IS HumGut's gtdb_tax_id
 # column directly (verified 2026-09-20: 4940 distinct gtdb_tax_id values in
 # the manifest vs. 4939 distinct genome taxids seen in the fixed Bracken
 # index), which is coarser than HumGut's own genome-level cluster975
 # grouping -- several cluster975 genome files can share one gtdb_tax_id.
-# scripts/pick_representative_genomes.py uses this to choose one genome_file
+# mock_datasets/scripts/04_pick_representative_genomes.py uses this to choose one genome_file
 # per taxid (highest prevalence_score among that taxid's candidate rows --
 # how consistently that specific genome was detected across HumGut's
 # reference metagenomes, chosen over a dRep-style completeness/contamination
 # quality score since the goal is a realistic background community, not the
 # cleanest reference assembly).
 HUMGUT_TSV = Path("/rs1/shares/brc/admin/databases/HumGut/HumGut2.tsv")
-OUT_REPRESENTATIVE_GENOMES = PROJECT_ROOT / "dataset_creation" / "representative_genomes.tsv"
+OUT_REPRESENTATIVE_GENOMES = PROJECT_ROOT / "mock_datasets" / "results" / "representative_genomes.tsv"
 
-# scripts/build_fmt_abundance_profile.py: one ISS-ready abundance file per
+# mock_datasets/scripts/06_build_fmt_abundance_profile.py: one ISS-ready abundance file per
 # sample (config.FMT_READS_SAMPLE_LIST), summing each representative
 # genome's Bracken-corrected read count and normalizing to a fraction. The
 # first column is the real, absolute, resolved path to that genome's
@@ -362,9 +350,9 @@ OUT_REPRESENTATIVE_GENOMES = PROJECT_ROOT / "dataset_creation" / "representative
 # processed (534/31225 HumGut genomes were never phoraged at all -- see
 # HUMGUT_PROPHAGE_REMOVED_DIR below; 14-22 per sample were affected) and
 # renormalizes -- negligible abundance-mass impact, logged per sample.
-OUT_FMT_ABUNDANCE_PROFILES = PROJECT_ROOT / "dataset_creation" / "fmt_abundance_profiles"
+OUT_FMT_ABUNDANCE_PROFILES = PROJECT_ROOT / "mock_datasets" / "results" / "fmt_abundance_profiles"
 
-# scripts/extract_humgut_phoraged.py: pulls only the ~3455 genomes our
+# mock_datasets/scripts/helpers/extract_humgut_phoraged.py: pulls only the ~3455 genomes our
 # profiles actually need out of the shared HumGut_phoraged_*.tar.gz shards
 # (PHORAGER's prophage-stripped HumGut genomes, /rs1/shares/brc/admin/
 # databases/humgut_phoraged/ -- entire ~31225-genome collection across 7
@@ -377,17 +365,17 @@ OUT_FMT_ABUNDANCE_PROFILES = PROJECT_ROOT / "dataset_creation" / "fmt_abundance_
 # above (raw-MAG-subset-era var, same path, now genuinely populated).
 HUMGUT_PROPHAGE_REMOVED_DIR = DB_ROOT / "HumGut" / "prophage_removed"
 
-# scripts/generate_background_fmt.sh: runs `iss generate --abundance_file`
+# mock_datasets/scripts/07_generate_background_fmt.sh: runs `iss generate --abundance_file`
 # per real FMT sample profile (config.OUT_FMT_ABUNDANCE_PROFILES) against
 # the extracted phoraged genomes, replacing the archived lognormal/
 # exponential grid (BACKGROUND_ABUNDANCE_DISTS et al. above) with one driven
 # by real gut-microbiome abundance. Grid: FMT_BACKGROUND_MODELS x
 # FMT_READS_SAMPLE_LIST x FMT_BACKGROUND_N_READS. Models restricted to
 # hiseq/novaseq for the same reason as the old ISS_MODELS -- ART (which
-# read_mixing.sh uses for viral spike-in) has no built-in profile that fits
+# 10_read_mixing.sh uses for viral spike-in) has no built-in profile that fits
 # miseq/nextseq's ~301bp read length. Manifest schema is a direct match for
-# the one read_mixing.sh already expects (BACKGROUND_MANIFEST above) --
-# whatever repoints read_mixing.sh at OUT_BACKGROUND_FMT should need no
+# the one 10_read_mixing.sh already expects (BACKGROUND_MANIFEST above) --
+# whatever repoints 10_read_mixing.sh at OUT_BACKGROUND_FMT should need no
 # further changes to how it reads that file.
 OUT_BACKGROUND_FMT = PROJECT_ROOT / "data" / "background_fmt"
 BACKGROUND_FMT_MANIFEST = OUT_BACKGROUND_FMT / "manifest.tsv"
@@ -408,8 +396,13 @@ FMT_BACKGROUND_N_READS = ["10M"]  # 10M total reads (R1+R2) = 5M read pairs
 # per-read error simulation). Added 2026-09-22, per direction: without this,
 # there was exactly one background per real FMT sample, so there was no way
 # to separate genuine sample-to-sample (biological) variation from ISS's own
-# simulation noise. 3 samples x 3 replicates = 9 background combos.
-FMT_BACKGROUND_REPLICATES = 3
+# simulation noise. Set back to 1 on 2026-10-24: only rep1 was ever generated
+# (data/background_fmt/manifest.tsv seeds 1000-1002 are exactly what a
+# 1-replicate run assigns), so this now matches what actually exists.
+# Raise to 3 and rerun 07_generate_background_fmt.sh (--array=0-8) to add
+# rep2/rep3 -- existing rep1 rows are skipped, but seeds are by array index,
+# so a 3-replicate run would give the new reps different seeds than rep1's.
+FMT_BACKGROUND_REPLICATES = 1
 
 ############################
 # Utility functions
