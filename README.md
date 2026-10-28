@@ -1,5 +1,4 @@
 # Agentic Viral Benchmarking
-Agentic Benchmarking - Naomi, Mery, & Bonnie Spring 2026
 
 Two pipelines with the same layout (`scripts/`, `archive/`, `results/`, plus a README each), sharing the root `config.py`:
 
