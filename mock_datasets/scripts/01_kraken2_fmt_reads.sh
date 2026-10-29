@@ -5,6 +5,7 @@
 # Classifies each FMT sample's host-decontaminated paired reads against the
 # HumGut kraken2 DB (config.HUMGUT_KRAKEN2_DB). The .report feeds Bracken
 # (03_bracken_run.sh). One array task per sample in config.FMT_READS_SAMPLE_LIST.
+# Reads are expected at <FMT_READS_DIR>/<sample>/r1.fastq.gz and r2.fastq.gz.
 # Skips samples whose .report already exists.
 #
 # Usage:
@@ -51,4 +52,4 @@ fi
     --use-names \
     --output "$SAMPLE_OUT/${SAMPLE}.kraken" \
     --report "$SAMPLE_OUT/${SAMPLE}.report" \
-    "$READS_DIR/${SAMPLE}_1.fastq.gz" "$READS_DIR/${SAMPLE}_2.fastq.gz"
+    "$READS_DIR/$SAMPLE/r1.fastq.gz" "$READS_DIR/$SAMPLE/r2.fastq.gz"

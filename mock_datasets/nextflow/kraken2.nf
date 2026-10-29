@@ -1,17 +1,20 @@
 #!/usr/bin/env nextflow
 
-// Classify paired FMT reads taxonomically against the HumGut kraken2 database
+// Classify paired reads taxonomically against a kraken2 database.
+// Reads are expected at <reads_dir>/<sample_id>/r1.fastq.gz and r2.fastq.gz
  process kraken2 {
     label "process_high"
     label "publish_final"
-    container "${params.container__kraken2}"
+    conda "${params.conda__kraken2}"
 
     input:
-        tuple val(sampleid), path(r1), path(r2)
+        val(sample_id)
+        path(reads_dir)
         path(kraken2_db)
 
     output:
-        tuple val(sampleid), path("${sampleid}.report"), path("${sampleid}.kraken"), emit: classification
+        path("${sample_id}.report"), emit: report
+        path("${sample_id}.kraken"), emit: kraken
 
     shell:
     '''
@@ -20,8 +23,8 @@
     --threads !{task.cpus} \
     --paired \
     --use-names \
-    --output !{sampleid}.kraken \
-    --report !{sampleid}.report \
-    !{r1} !{r2}
+    --output !{sample_id}.kraken \
+    --report !{sample_id}.report \
+    !{reads_dir}/!{sample_id}/r1.fastq.gz !{reads_dir}/!{sample_id}/r2.fastq.gz
     '''
 }

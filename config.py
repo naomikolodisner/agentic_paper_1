@@ -318,7 +318,11 @@ OUT_KRAKEN2_FMT = PROJECT_ROOT / "mock_datasets" / "results" / "kraken2_fmt"
 # up with Bracken (redistributes reads whose LCA collapsed above genome
 # level back down) rather than using the raw kraken2 --report counts
 # directly -- not yet decided/built as of this comment.
-FMT_READS_DIR = BASE / "nkolodi" / "fmt_viruses" / "03_contam_removal"
+# FMT_READS_DIR holds one dir per sample with r1.fastq.gz / r2.fastq.gz
+# symlinks to FMT_READS_SOURCE_DIR's {sample}_1/_2.fastq.gz (same layout as
+# the Nextflow kraken2 process expects; the originals are left untouched).
+FMT_READS_SOURCE_DIR = BASE / "nkolodi" / "fmt_viruses" / "03_contam_removal"
+FMT_READS_DIR = PROJECT_ROOT / "data" / "fmt_reads"
 FMT_READS_SAMPLE_LIST = XFILE_DIR / "xae"
 OUT_KRAKEN2_FMT_READS = PROJECT_ROOT / "mock_datasets" / "results" / "kraken2_fmt_reads"
 

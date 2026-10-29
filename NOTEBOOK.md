@@ -831,3 +831,31 @@ Nextflow port, kraken2 process (step 01):
   contig-vs-reads backstory is already in CLAUDE.md and earlier entries), folded the four config
   lookups into one `cfg` helper, dropped the progress echoes and the out-of-range array check.
   Same kraken2 command and outputs. `bash -n` passes, not re-run.
+
+## 2026-10-29
+
+Nextflow port, kraken2 process (step 01), continued:
+
+- **`kraken2.nf`** now uses conda, `conda "${params.conda__kraken2}"`, instead of
+  `container "${params.container__kraken2}"`. The config should set it to the same env as
+  `01_kraken2_fmt_reads.sh` (`/rs1/researchers/b/blhurwit/users/nkolodi/conda_envs/kraken2env`).
+- No tuple. Inputs: `val(sample_id)`, `path(reads_dir)`, `path(kraken2_db)`. The process builds
+  the read paths itself, as the sbatch script does: `<reads_dir>/<sample_id>/r1.fastq.gz` and
+  `r2.fastq.gz` (one directory per sample, same file names in every sample). Outputs are two
+  separate lines, `emit: report` and `emit: kraken` (replacing the single
+  `emit: classification`). This fixes a half-done rename that had left
+  `samplei_id`/`sampleid`/`sample_id` mixed. Flags are unchanged and match the sbatch script
+  (`--paired --use-names`, `.kraken` + `.report`). The comment no longer says FMT/HumGut.
+- Trade-off: `-resume` looks at `reads_dir`, not at each read file, so it may not rerun a sample
+  whose reads were replaced in place. FMT reads (`03_contam_removal/<id>_1.fastq.gz`) aren't in
+  this layout yet and would need per-sample dirs (symlinks are enough).
+- No `main.nf`/`nextflow.config` yet (on purpose). The `process_high`/`publish_final` labels and
+  `params.conda__kraken2` are still undefined.
+- Not run or linted (no Nextflow on the laptop).
+- **`01_kraken2_fmt_reads.sh`** now expects the same layout as the Nextflow process:
+  `$FMT_READS_DIR/<sample>/r1.fastq.gz` and `r2.fastq.gz` (it used to be
+  `$FMT_READS_DIR/<sample>_1.fastq.gz`). `config.FMT_READS_DIR` now points at `data/fmt_reads/`, which holds one
+  dir per sample of `r1`/`r2` symlinks to the originals. The originals stay in
+  `fmt_viruses/03_contam_removal` (now `config.FMT_READS_SOURCE_DIR`) and aren't modified. **The
+  symlinks still have to be created on Hazel**, since `/rs1` isn't reachable from the laptop.
+  CLAUDE.md data table updated. `bash -n` passes, not re-run.

@@ -265,6 +265,7 @@ even-older `equal2/3/4`/`unequal2/3`/`single` ART-only pipeline output. See
 | `spike_in_samples/` | ART-based spike-in samples: `{type}/sample{n}/{condition}/final.{1,2}.fq.gz` — `og` design, 1 replicate, 20 conditions, built against `background_fmt/` (job 1123532, 2026-10-06); the old 5/10/20v `background_iss` output is archived at `archive/spike_in_samples_background_iss/` |
 | `sample_lists/xad` | Sample IDs for the active detection pipeline run (one `{profile}_{model}` per line) |
 | `sample_lists/xac` | FMT sample IDs for the **archived** contig-based classification (`mock_datasets/archive/kraken2_fmt.sh`, ERR2198611–613) |
+| `fmt_reads/` | `{sample}/r1.fastq.gz` + `r2.fastq.gz` **symlinks** to the real host-decontaminated FMT reads in `config.FMT_READS_SOURCE_DIR` (`fmt_viruses/03_contam_removal/{sample}_1/_2.fastq.gz`, left untouched). `config.FMT_READS_DIR`; read by `mock_datasets/scripts/01_kraken2_fmt_reads.sh` and the Nextflow `kraken2` process |
 | `sample_lists/xae` | FMT sample IDs for the **current** read-based classification (`FMT_READS_SAMPLE_LIST`, `mock_datasets/scripts/01_kraken2_fmt_reads.sh`, ERR2198703–705) |
 | `accessions_in_kraken2.txt` | INPHARED spike-in genome pool — 408 accessions (of the full ~2902-genome INPHARED catalog) confirmed kraken2_pluspfp-detectable, written by `mock_datasets/scripts/08_check_kraken2_accessions.py` |
 
