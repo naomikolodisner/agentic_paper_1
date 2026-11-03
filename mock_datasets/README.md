@@ -32,7 +32,7 @@ nothing upstream, but 10 needs both 07 and 09.
 | 07 | `07_generate_background_fmt.sh` | `sbatch --array=0-2` | `data/background_fmt/` + `manifest.tsv` |
 | 08 | `08_check_kraken2_accessions.py` | `python` | `data/accessions_in_kraken2.txt` (spike-in genome pool) |
 | 09 | `09_pick_refs.py --design og` | `python` | `data/spike_in_samples/{type}/sample{n}/` (`contigs.fasta`, `refs_log.txt`, `conditions.tsv`) |
-| 10 | `10_read_mixing.sh` (→ `helpers/viral_spike_helper.py`, `helpers/combine_reads.py`) | `sbatch --array=0-$((N-1))`, N = number of `conditions.tsv` | `.../{condition}/final.{1,2}.fq.gz` |
+| 10 | `10_read_mixing.sh` | `sbatch --array=0-$((N-1))`, N = number of `conditions.tsv` | `.../{condition}/final.{1,2}.fq.gz` |
 | 11 | `11_kraken2_check.sh` | `sbatch` (gate: exits nonzero if a reference is undetectable) | `results/kraken2_check/per_reference_recall.tsv` |
 | 12 | `12_assemble.sh` | `sbatch --array=0-$((N-1))`, N = lines in the work list | `.../{condition}/assembly.fa` |
 

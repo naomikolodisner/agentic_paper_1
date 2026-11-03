@@ -859,3 +859,57 @@ Nextflow port, kraken2 process (step 01), continued:
   `fmt_viruses/03_contam_removal` (now `config.FMT_READS_SOURCE_DIR`) and aren't modified. **The
   symlinks still have to be created on Hazel**, since `/rs1` isn't reachable from the laptop.
   CLAUDE.md data table updated. `bash -n` passes, not re-run.
+
+## 2026-11-03
+
+Nextflow port: processes for every tool step in `mock_datasets/`:
+
+- **`kraken2.nf`**, following the PI's review comments: back to `container "${params.container__kraken2}"`
+  (not conda), and the input is now `tuple val(sample_id), path(r1), path(r2)` + `path(kraken2_db)`,
+  so each sample's read files are staged (and checked by `-resume`) individually. Both outputs carry
+  `sample_id` (`tuple val(sample_id), path(...)`, `emit: report` / `kraken`) so Bracken can join on it.
+  A usage comment shows how to shape a sample list into that tuple. Fixed a `/make a branch` note
+  line that had only one slash, which would have been a Groovy syntax error. The meeting notes otherwise stay.
+- New processes in `mock_datasets/nextflow/`, one per file, all the same style (`container
+  "${params.container__<tool>}"`, `process_*` + `publish_*` labels, `shell:` with `!{}`, threads from `task.cpus`):
+  - `bracken_build.nf` (step 02): builds the `library/`, `taxonomy/`, `seqid2taxid.map` layout in the
+    work dir, symlinking the DB's `*.k2d`, so the DB on `/rs1` is no longer modified in place. The
+    parallel zcat chunking is replaced by `find -exec zcat {} +`, which also stays under ARG_MAX.
+    It still keys `seqid2taxid.map` on the full `kraken:taxid|N|seqid` token. Emits `database<L>mers.kmer_distrib`.
+  - `bracken.nf` (step 03): `bracken -d .` against the staged kmer_distrib, level S, `-t 10`.
+  - `iss_generate.nf` (step 07): rewrites the profile's absolute genome paths to the staged basenames,
+    so the `--draft` strings still match the abundance file literally. It emits the measured read
+    length as `env(read_len)`, which replaces the manifest's role for ART.
+  - `art_illumina.nf` + `shuffle_reads.nf` (step 10): one condition per task. The script's loop over
+    conditions, the random background draw and the 5x retry loop belong in the workflow / `errorStrategy`.
+    `shuffle_reads` is the `combine_reads.py` paste|shuf|awk in plain bash. ART no longer gets an
+    explicit `-rs` (the original's seed was `$RANDOM` anyway).
+  - `kraken2_pooled.nf` (step 11): the pooled single-end kraken2 call, with inputs restaged as `reads_*.fq.gz`.
+  - `megahit.nf` (step 12): `--memory` from `task.memory` instead of a hardcoded 100 GB.
+- Not ported (Python, not tools, or the parsers for later): 04, 05 (tar extraction), 06, 08, 09,
+  `log-actual-coverage`/`spike_summary.tsv`, and 11's per-reference recall parsing. The sbatch scripts are unchanged.
+- Still undefined: the labels and the `params.container__*` values (kraken2, bracken, insilicoseq, art,
+  megahit, ubuntu). The containers will need `/rs1` bound. Not run or linted. The awk/sed/paste
+  bodies were spot-checked locally on toy data.
+
+Follow-up, same day: `bracken_build` and `bracken` now share `bracken.nf`. `kraken2_pooled.nf` and
+`megahit.nf` were deleted for now, since steps 11 and 12 aren't part of this port.
+`shuffle_reads.nf` was also removed: it's a shell rewrite of the `combine_reads.py` helper, not a
+tool, so it waits with the parsers. Step 10's Nextflow port is only `art_illumina` for now.
+
+Simplified every script in `mock_datasets/scripts/` (about 2,000 lines down to about 700). Headers are now one to three lines, and every
+shell script uses the same `cfg()` helper as step 01 and `set -euo pipefail`. Each tool call matches its Nextflow process
+(same flags and steps), so the `.nf` files didn't change:
+- **02**: the parallel chunked zcat is now `find -L fna -exec zcat {} +`, as in `bracken_build`. `seqid2taxid.map` is rebuilt
+  on every run. The check at the end that counted taxids in the kmer_distrib was dropped.
+- **07**: the run grid comes from one `itertools.product` call. Read length is measured as in `iss_generate.nf`. The manifest
+  format is unchanged.
+- **10**: the ART loop is the same as in `art_illumina.nf` (awk split per genome, no `-rs`). The coverage log and the
+  paste|shuf|awk shuffle are now inline, so `helpers/combine_reads.py` and `helpers/viral_spike_helper.py` moved to
+  `archive/`. The 5x retry loop is gone: a failure stops the task, and a rerun skips conditions already done.
+  `spike_summary.tsv` no longer has a `seed` column.
+- **11**: the per-reference recall is an awk instead of an inline Python block (tested on toy data), and the output files are the same.
+- **12**: MegaHit uses `SLURM_CPUS_PER_TASK` for its thread count.
+- **04, 06, 08, 09, `extract_humgut_phoraged.py`**: same outputs with less code (pandas `drop_duplicates` for the
+  representative pick). The "missing" warnings are gone.
+CLAUDE.md and the README were updated for the archived helpers. `bash -n` and `py_compile` pass. Nothing has been run on Hazel.

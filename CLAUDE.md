@@ -177,12 +177,13 @@ with a randomly chosen background row from the ISS pool.
   AVrC (`config.AVRC_ALL_SEQUENCES` / `AVRC_METADATA_CSV`) is no longer the spike-in source; it
   still backs the BLAST annotation step (`config.DB_DIR` / `ANNOTATIONS`).
   `mock_datasets/scripts/10_read_mixing.sh` (one array task per `conditions.tsv`) then, per condition: draws one
-  random usable background row (`VALID_BG_ROWS`, filtered by read length vs.
+  random usable background row (filtered by read length vs.
   `ART_PROFILE_BY_MODEL` / `ART_PROFILE_MAX_LEN`); runs `art_illumina -ss MSv3 -p -na -f {cov}
   -l {background read length, 151} -m 200 -s 10` per genome (MSv3 because ART has no NovaSeq
   profile); logs actual per-genome coverage from ART's read counts
-  (`mock_datasets/scripts/helpers/viral_spike_helper.py log-actual-coverage` → `coverage_log.txt`, QC only) plus
-  `spike_summary.tsv`; and `mock_datasets/scripts/helpers/combine_reads.py` shuffles viral + background into
+  (`coverage_log.txt`, QC only) plus `spike_summary.tsv`; and shuffles viral + background read pairs
+  (`paste | shuf | awk`, inline since 2026-11-03; the old `combine_reads.py` / `viral_spike_helper.py`
+  helpers are in `mock_datasets/archive/`) into
   `{type}/sample{n}/{condition}/final.{1,2}.fq.gz`. The viral read % is derived, never an input.
   The older large-subset design (`--design subsets`, `VIRAL_SUBSET_SIZES` [80, 115, 150],
   `SPIKE_COVERAGES`) is still in `09_pick_refs.py` but unused. The retired percentage design's
@@ -196,7 +197,7 @@ with a randomly chosen background row from the ISS pool.
   source genome by parsing kraken2's own read-ID column — reads whose derived genome ID isn't
   one of the sample's known viral references (i.e. background reads) are ignored. This relies
   on ART's own read-naming convention for the viral reads (`<genome_id>-<read_number>/1`,
-  verified empirically 2026-07-15 via a live `art_illumina` test), which `combine_reads.py`'s
+  verified empirically 2026-07-15 via a live `art_illumina` test), which the read-mixing
   shuffle leaves untouched and kraken2's `--output` echoes verbatim — background reads keep
   ISS's own convention, but that's irrelevant since background genome IDs never match a known
   viral reference anyway. It's deliberately agnostic to
@@ -305,7 +306,7 @@ Each viral detection tool runs in its own isolated conda environment:
 | `fasplit_env` | FaSplit |
 | `blast_env` | BLAST |
 | `seqtk_env` | seqtk |
-| `test_env` | BioPython/pandas helper scripts (`09_pick_refs.py`, `extract_humgut_subset.py`, `viral_spike_helper.py`, `combine_reads.py`), ART Illumina (viral spike-in reads), MegaHit |
+| `test_env` | BioPython/pandas helper scripts (`04`/`06`/`09` steps, `extract_humgut_phoraged.py`), ART Illumina (viral spike-in reads), MegaHit |
 | `insilicoseq` | InSilicoSeq (ISS) — background metagenome read simulation |
 
 Each `@python_app` activates its specific environment via `conda run -n <env>` inside the function body.
@@ -330,8 +331,6 @@ Each `@python_app` activates its specific environment via `conda run -n <env>` i
 | `mock_datasets/scripts/08_check_kraken2_accessions.py` | Re-confirms kraken2_pluspfp detectability for the full ~2902-genome INPHARED catalog, writes `data/accessions_in_kraken2.txt` |
 | `mock_datasets/scripts/09_pick_refs.py` | Picks INPHARED genomes (408-accession pool) and per-genome ART coverages per sample dir (`--design og`) |
 | `mock_datasets/scripts/10_read_mixing.sh` | Builds every condition in each sample dir's `conditions.tsv` via ART, mixed with a random `data/background_fmt/` row |
-| `mock_datasets/scripts/helpers/combine_reads.py` | Concatenates + shuffles viral spike-in reads with background reads |
-| `mock_datasets/scripts/helpers/viral_spike_helper.py` | `log-actual-coverage`: derives per-genome coverage from ART's real read counts (QC log only) |
 | `mock_datasets/scripts/11_kraken2_check.sh` | Gate: confirms spiked viral refs are kraken2-detectable before the heavier pipeline runs; output in `mock_datasets/results/kraken2_check/` |
 | `mock_datasets/scripts/12_assemble.sh` | MegaHit assembly of each spike-in FASTQ pair |
 | `mock_datasets/archive/submit_pipeline.sh` | Archived 2026-10-24 — chained the retired background step and percentage design |
