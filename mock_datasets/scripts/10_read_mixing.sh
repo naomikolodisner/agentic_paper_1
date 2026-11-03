@@ -23,6 +23,8 @@ cfg() { "$PYTHON_BIN" -c "import sys; sys.path.insert(0, '$PROJECT'); import con
 
 SPIKE_IN_DIR=$(cfg SPIKE_IN_DIR)
 BACKGROUND_DIR=$(cfg OUT_BACKGROUND_FMT)
+FRAGMENT_MEAN=$(cfg ART_FRAGMENT_MEAN)
+FRAGMENT_SD=$(cfg ART_FRAGMENT_SD)
 
 # Background rows whose read length the model's ART profile supports: combo, ART profile, pairs, read length
 mapfile -t BACKGROUNDS < <("$PYTHON_BIN" -c "
@@ -41,7 +43,24 @@ mkdir -p "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 cd "$TMP"
 
-# One FASTA per genome, since ART applies a single -f to every record in -i
+# Same command as nextflow/art_illumina.nf: every sequence in a FASTA at one fold coverage -> <sampleid>_1.fq, _2.fq
+# (-ss and -l come from the chosen background here, from params in the process)
+art_illumina() {
+    local sampleid=$1 fasta=$2 fold_coverage=$3
+    "$ART_BIN" \
+        -ss "$profile" \
+        -p \
+        -na \
+        -i "$fasta" \
+        -f "$fold_coverage" \
+        -l "$read_len" \
+        -m "$FRAGMENT_MEAN" \
+        -s "$FRAGMENT_SD" \
+        -o "${sampleid}_"
+}
+
+# Workflow bookkeeping, done here in bash:
+# 1. split contigs.fasta into one FASTA per genome (Nextflow: splitFasta)
 ids=( $(grep '^>' "$sample_dir/contigs.fasta" | sed 's/^>//; s/[[:space:]].*//') )
 awk '/^>/ { if (out) close(out); out = substr($1, 2) ".fa" } { print > out }' "$sample_dir/contigs.fasta"
 
@@ -52,30 +71,24 @@ while IFS=$'\t' read -r -u 3 cond coverages; do
 
     IFS=$'\t' read -r bg profile bg_pairs read_len <<< "${BACKGROUNDS[$(( RANDOM % ${#BACKGROUNDS[@]} ))]}"
     IFS=',' read -ra covs <<< "$coverages"
-    rm -f art_*.fq
+    rm -f -- *.fq
 
+    # 2. pair each genome with its coverage and 3. run ART once per genome (Nextflow: one art_illumina task each)
     printf "genome_id\tn_pairs_actual\tgenome_length\tcoverage_x\n" > "$out/coverage_log.txt"
     for i in "${!ids[@]}"; do
-        "$ART_BIN" \
-            -ss "$profile" \
-            -p \
-            -na \
-            -i "${ids[$i]}.fa" \
-            -f "${covs[$i]}" \
-            -l "$read_len" \
-            -m 200 \
-            -s 10 \
-            -o "art_${ids[$i]}_"
+        sampleid="${cond}_${ids[$i]}"
+        art_illumina "$sampleid" "${ids[$i]}.fa" "${covs[$i]}"
 
         # Coverage actually achieved, from ART's read count (QC only)
-        pairs=$(( $(wc -l < "art_${ids[$i]}_1.fq") / 4 ))
+        pairs=$(( $(wc -l < "${sampleid}_1.fq") / 4 ))
         length=$(grep -v '^>' "${ids[$i]}.fa" | tr -d '\n' | wc -c)
         awk -v id="${ids[$i]}" -v p="$pairs" -v l="$length" -v r="$read_len" \
             'BEGIN { printf "%s\t%d\t%d\t%.4f\n", id, p, l, p * 2 * r / l }' >> "$out/coverage_log.txt"
     done
 
-    cat art_*_1.fq > viral.1.fq
-    cat art_*_2.fq > viral.2.fq
+    # 4. join this condition's per-genome reads into one pair (Nextflow: collectFile)
+    cat "${cond}"_*_1.fq > viral.1.fq
+    cat "${cond}"_*_2.fq > viral.2.fq
     viral_pairs=$(( $(wc -l < viral.1.fq) / 4 ))
     awk -v c="$cond" -v cov="$coverages" -v bg="$bg" -v v="$viral_pairs" -v b="$bg_pairs" 'BEGIN {
         print "condition\tcoverages\tbg_combo\tviral_pairs\tbg_pairs\tviral_pct"

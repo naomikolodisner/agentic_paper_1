@@ -289,6 +289,10 @@ KRAKEN2_SEQID2TAXID = KRAKEN2_DB / "seqid2taxid.map"
 # check gate). Built with the kraken2env conda env (kraken2 2.1.3) --
 # classification must use the same env/version.
 HUMGUT_KRAKEN2_DB = PROJECT_ROOT / "data" / "humgut_kraken2"
+# Bracken settings for HUMGUT_KRAKEN2_DB. KMER_LEN must match the DB build (k=35, checked with
+# kraken2-inspect); READ_LEN must match between 02 (build) and 03 (run). Real FMT reads are 101bp.
+BRACKEN_KMER_LEN = 35
+BRACKEN_READ_LEN = 100
 
 # Real FMT SPAdes assemblies (contigs.fasta per sample), produced upstream by
 # the separate fmt_viruses repo -- not part of this project's own pipeline.

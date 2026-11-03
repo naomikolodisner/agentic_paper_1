@@ -22,7 +22,8 @@ SIF="/rs1/shares/brc/admin/containers/images/quay.io_biocontainers_bracken:3.1--
 cfg() { "$PYTHON_BIN" -c "import sys; sys.path.insert(0, '$PROJECT'); import config; print(config.$1)"; }
 
 DB=$(cfg HUMGUT_KRAKEN2_DB)
-READ_LEN=100
+KMER_LEN=$(cfg BRACKEN_KMER_LEN)
+READ_LEN=$(cfg BRACKEN_READ_LEN)
 module load apptainer/1.4.2-1
 
 mkdir -p "$DB/library" "$DB/taxonomy"
@@ -41,4 +42,8 @@ grep '^>' "$DB/library/library.fna" \
     > "$DB/seqid2taxid.map"
 
 apptainer exec --bind /rs1,/gpfs_common "$SIF" \
-    bracken-build -d "$DB" -t "${SLURM_CPUS_PER_TASK:-10}" -k 35 -l "$READ_LEN"
+    bracken-build \
+    -d "$DB" \
+    -t "${SLURM_CPUS_PER_TASK:-10}" \
+    -k "$KMER_LEN" \
+    -l "$READ_LEN"

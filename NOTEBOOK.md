@@ -913,3 +913,31 @@ shell script uses the same `cfg()` helper as step 01 and `set -euo pipefail`. Ea
 - **04, 06, 08, 09, `extract_humgut_phoraged.py`**: same outputs with less code (pandas `drop_duplicates` for the
   representative pick). The "missing" warnings are gone.
 CLAUDE.md and the README were updated for the archived helpers. `bash -n` and `py_compile` pass. Nothing has been run on Hazel.
+
+Got `art_illumina.nf`, `iss_generate.nf` and `bracken_build` (in `bracken.nf`) ready for a PR to hurwitzlab/nextflow_process_library,
+with only the changes the library's `modules/CLAUDE.md` requires: `sample_id` -> `sampleid`, a one-line comment above each
+process, and for `bracken_build` (it has no `sampleid`) a `publishDir "${params.bracken_build_outdir}"` instead of the
+publish label. The commands are unchanged. Our `bracken` process isn't being submitted; the library's `bracken` runs the
+same command. Not yet copied to the `nkolodi_processes` branch; waiting for review.
+Then `bracken_build` became the general version: just `bracken-build -d <db>` on a standard kraken2 DB (one that has `library/`,
+`taxonomy/` and `seqid2taxid.map`). Rebuilding the HumGut layout (library concat, GTDB dmp names, the seqid map) is
+fixing our own DB, so it stays in `02_bracken_build.sh`. Like plain bracken-build, it writes its output into the DB folder.
+`bracken_build`'s `-k` now comes from `params.bracken_build_kmer_len` instead of a hardcoded 35, so a DB built with a non-default
+k-mer length doesn't silently get a wrong table. Our config should set it to 35 (HumGut DB: k=35, checked with kraken2-inspect).
+To match, `config.py` now has `BRACKEN_KMER_LEN = 35` and `BRACKEN_READ_LEN = 100`. `02_bracken_build.sh` reads both (its
+bracken-build call is now laid out flag-per-line like the process) and `03_bracken_run.sh` reads `BRACKEN_READ_LEN`, so
+build and run can't use different read lengths. `bash -n` passes, not run.
+Renamed the ISS process to `create_mock_community_reads_draft_abundance_file`, following the naming of the two
+`create_mock_community_reads_*` processes already in the library's `insilicoseq.nf` (it's the `--draft` + `--abundance_file`
+combination neither of them covers). The file is still `iss_generate.nf` here. Its publish param becomes
+`params.create_mock_community_reads_draft_abundance_file_outdir`.
+`art_illumina.nf` is now a single general ART call: input `tuple val(sampleid), path(fasta), val(fold_coverage)`, and every sequence
+in the FASTA is simulated at that coverage. `-ss`, `-l`, `-m` and `-s` come from `params.art_illumina_seq_sys`, `_len`, `_mflen` and `_sdev`.
+The per-genome coverage handling (split the FASTA, pair each genome with its `conditions.tsv` coverage, join the reads per
+condition) is gone from the process. A workflow would do it with `splitFasta` + `collectFile`. `10_read_mixing.sh` now reads
+`-m`/`-s` from `config.ART_FRAGMENT_MEAN`/`_SD` (200/10, same values as before) instead of hardcoding them.
+`10_read_mixing.sh` is laid out like the new `art_illumina.nf` plus the workflow around it: an `art_illumina()` bash function runs the
+same command as the process (`-o <sampleid>_`), with each step labeled by its Nextflow equivalent: split `contigs.fasta` (splitFasta),
+pair each genome with its coverage under a `<condition>_<genome>` sampleid and run ART once per genome (one task each), then join
+per condition (collectFile). `-ss`/`-l` still come from the chosen background row (params in the process). Read names are unchanged
+(ART names reads from the FASTA header, not `-o`), so the step 11 gate still works. Split/pair/join were checked under bash with a stub ART.

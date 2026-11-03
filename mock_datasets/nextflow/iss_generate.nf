@@ -1,23 +1,16 @@
 #!/usr/bin/env nextflow
 
-// Simulate paired metagenome reads with InSilicoSeq from draft genomes and an
-// abundance profile (genome path<TAB>abundance, no header).
-// ISS matches the profile's first column against the literal --draft strings, so
-// the profile's paths are rewritten to the staged file names and --draft is built
-// from that same column. Each --draft file is modeled as one genome.
-// genomes is every file listed in the profile, e.g.
-//   profile.splitCsv(sep: "\t").map { file(it[0]) }.collect()
-// Also emits the measured read length, which ART needs to match the background.
-process iss_generate {
+// Simulate paired metagenome reads with InSilicoSeq from draft genomes (one file = one genome) and an abundance file
+process create_mock_community_reads_draft_abundance_file {
     label "process_high"
     label "publish_intermediate"
     container "${params.container__insilicoseq}"
 
     input:
-        tuple val(sample_id), val(model), val(n_reads), val(seed), path(abundance_tsv), path(genomes)
+        tuple val(sampleid), val(model), val(n_reads), val(seed), path(abundance_tsv), path(genomes)
 
     output:
-        tuple val(sample_id), val(model), path("${sample_id}_R1.fastq.gz"), path("${sample_id}_R2.fastq.gz"), env(read_len), emit: reads
+        tuple val(sampleid), val(model), path("${sampleid}_R1.fastq.gz"), path("${sampleid}_R2.fastq.gz"), env(read_len), emit: reads
 
     shell:
     '''
@@ -31,8 +24,8 @@ process iss_generate {
     --seed !{seed} \
     --cpus !{task.cpus} \
     --compress \
-    --output !{sample_id}
+    --output !{sampleid}
 
-    read_len=$( (zcat !{sample_id}_R1.fastq.gz || true) | awk 'NR == 2 { print length($0); exit }')
+    read_len=$( (zcat !{sampleid}_R1.fastq.gz || true) | awk 'NR == 2 { print length($0); exit }')
     '''
 }

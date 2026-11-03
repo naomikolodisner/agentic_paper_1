@@ -20,7 +20,7 @@ SIF="/rs1/shares/brc/admin/containers/images/quay.io_biocontainers_bracken:3.1--
 cfg() { "$PYTHON_BIN" -c "import sys; sys.path.insert(0, '$PROJECT'); import config; print(config.$1)"; }
 
 DB=$(cfg HUMGUT_KRAKEN2_DB)
-READ_LEN=100
+READ_LEN=$(cfg BRACKEN_READ_LEN)
 mapfile -t SAMPLES < "$(cfg FMT_READS_SAMPLE_LIST)"
 SAMPLE="${SAMPLES[${SLURM_ARRAY_TASK_ID:-0}]}"
 OUT="$(cfg OUT_KRAKEN2_FMT_READS)/$SAMPLE"
